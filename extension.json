@@ -1,19 +1,9 @@
 {
   "id": "tmdb-proxy-connector",
-  "name": "TMDB Proxy Connector",
-  "version": "1.1",
+  "name": "TMDB Proxy",
+  "version": "1.0",
+  "component": true,
+  "standalone": false,
   "author": "YourNick",
-  "repository": "https://github.com/yourname/tmdb-proxy-connector",
-  "description": "Подключение к защищенному прокси TMDB API",
-  "frontend": {
-    "type": "userScript",
-    "script": "script.js"
-  },
-  "settings": {
-    "schema": "settings.schema.json"
-  },
-  "permissions": [
-    "intercept_requests",
-    "storage"
-  ]
+  "frontend": "script.js"
 }
