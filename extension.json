@@ -1,9 +1,8 @@
 {
-  "id": "tmdb-proxy-connector",
+  "id": "tmdb_proxy_connector",
   "name": "TMDB Proxy",
   "version": "1.0",
   "component": true,
   "standalone": false,
-  "author": "YourNick",
   "frontend": "script.js"
 }
