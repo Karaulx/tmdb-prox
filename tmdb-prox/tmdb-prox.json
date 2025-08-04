@@ -1,1 +1,8 @@
-
+{
+  "id": "tmdb-prox",  // Только латиница, без дефисов!
+  "name": "TMDB Proxy",
+  "version": "1.0",
+  "component": true,
+  "standalone": false,
+  "frontend": "script.js"
+}
