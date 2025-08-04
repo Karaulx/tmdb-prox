@@ -1,45 +1,55 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Инициализация...');
+    console.log('[TMDB Proxy] Запуск плагина...');
     
-    // Конфигурация (замените на свои данные)
+    // Конфигурация (ОБЯЗАТЕЛЬНО замените значения)
     const config = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
-        auth: {
-            username: 'jackett', // из /etc/nginx/.htpasswd
-            password: '3p4uh49y'
+        credentials: {
+            username: 'ваш_логин', // из /etc/nginx/.htpasswd
+            password: 'ваш_пароль'
         },
         debug: true
     };
 
-    // Проверка готовности Lampa
-    function init() {
+    // Генерация заголовка авторизации
+    function getAuthHeader() {
+        return 'Basic ' + btoa(config.credentials.username + ':' + config.credentials.password);
+    }
+
+    // Ожидание готовности Lampa
+    function waitLampa() {
         if (!window.lampa || !lampa.interceptor) {
-            setTimeout(init, 100);
+            if (config.debug) console.log('[TMDB Proxy] Ожидание инициализации Lampa...');
+            setTimeout(waitLampa, 200);
             return;
         }
-
+        
         // Перехватчик запросов
         lampa.interceptor.request.add({
             before: req => {
-                if (/themoviedb\.org/.test(req.url)) {
+                if (req.url.includes('themoviedb.org')) {
                     const newUrl = req.url
-                        .replace('api.themoviedb.org', config.proxyHost)
-                        .replace('image.tmdb.org', config.proxyHost);
+                        .replace('https://api.themoviedb.org/3', config.proxyHost + '/3')
+                        .replace(/https?:\/\/image\.tmdb\.org/, config.proxyHost);
                     
-                    if (config.debug) console.log('Проксирование:', req.url, '→', newUrl);
+                    if (config.debug) console.log('[TMDB Proxy]', req.url, '→', newUrl);
                     
                     return {
                         ...req,
                         url: newUrl,
                         headers: {
                             ...req.headers,
-                            'Authorization': 'Basic ' + btoa(config.auth.username + ':' + config.auth.password)
+                            'Authorization': getAuthHeader()
                         }
                     };
                 }
                 return req;
+            },
+            error: err => {
+                console.error('[TMDB Proxy] Ошибка:', err);
+                return err;
             }
         });
         
@@ -47,6 +57,6 @@
     }
 
     // Автозапуск
-    if (window.appready) init();
-    else lampa.Listener.follow('app', e => e.type === 'ready' && init());
+    if (window.appready) waitLampa();
+    else lampa.Listener.follow('app', e => e.type === 'ready' && waitLampa());
 })();
