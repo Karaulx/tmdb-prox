@@ -1,35 +1,20 @@
 (function() {
-  console.log('TMDB Proxy: Plugin loading...');
+  console.log('TMDB Proxy: Plugin started');
   
-  // Проверка старого API Lampa
-  if (!window.lampa || !lampa.interceptor) {
-    console.error('Lampa API not found or incompatible!');
+  // Проверка API Lampa 1.12.2
+  if (!window.lampa || !lampa.interceptor || !lampa.notice) {
+    console.error('Lampa 1.12.2 API not found!');
     return;
   }
 
-  // Перехватчик запросов (старый стиль)
+  // Простое уведомление
+  lampa.notice.show('TMDB Proxy loaded');
+  
+  // Перехватчик запросов
   lampa.interceptor.request.add({
     before: function(req) {
-      try {
-        console.log('[TMDB Proxy] Intercepted:', req.url);
-        
-        // Пример проксирования:
-        // if (req.url.includes('api.themoviedb.org')) {
-        //   req.url = req.url.replace('api.themoviedb.org', 'ваш-прокси.сервер');
-        // }
-        
-        return req;
-      } catch(e) {
-        console.error('[TMDB Proxy] Error:', e);
-        return req;
-      }
+      console.log('Request to:', req.url);
+      return req; 
     }
   });
-
-  // Простое уведомление о загрузке
-  if (lampa.notice) {
-    lampa.notice.show('TMDB Proxy loaded');
-  }
-
-  console.log('TMDB Proxy: Ready');
 })();
