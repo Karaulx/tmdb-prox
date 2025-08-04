@@ -1,51 +1,47 @@
 (function() {
     'use strict';
+    
+    console.log('[TMDB Proxy] Загрузка...'); // Лог инициализации
 
-    // Проверка API Lampa
-    if (!window.lampa || !lampa.interceptor) {
-        console.error('Lampa API не обнаружена');
-        return;
-    }
-
-    const config = {
-        proxyHost: 'https://novomih25.duckdns.org:9091',
-        debug: true
-    };
-
-    // Основная функция проксирования
-    function proxyUrl(url) {
-        if (!url || typeof url !== 'string') return url;
-        return url.replace(
-            /^(http:|https:)?\/\/(api\.themoviedb\.org|image\.tmdb\.org)/, 
-            config.proxyHost
-        );
-    }
-
-    // Перехват API запросов
-    lampa.interceptor.request.add({
-        before: req => {
-            const newUrl = proxyUrl(req.url);
-            if (newUrl !== req.url && config.debug) {
-                console.log('[TMDB Proxy]', req.url, '→', newUrl);
-            }
-            return { ...req, url: newUrl };
+    // Ожидание готовности Lampa
+    function init() {
+        if (!window.lampa || !lampa.interceptor) {
+            console.log('[TMDB Proxy] Ожидание инициализации Lampa...');
+            setTimeout(init, 200);
+            return;
         }
-    });
 
-    // Перехват изображений в DOM
-    function proxyImages() {
-        document.querySelectorAll('img').forEach(img => {
-            if (img.src.includes('image.tmdb.org')) {
-                img.src = proxyUrl(img.src);
+        const config = {
+            proxyHost: 'https://novomih25.duckdns.org:9091',
+            debug: true
+        };
+
+        // Перехватчик запросов
+        lampa.interceptor.request.add({
+            before: req => {
+                // Проксируем API и изображения
+                if (req.url.includes('themoviedb.org')) {
+                    const newUrl = req.url
+                        .replace('https://api.themoviedb.org/3', config.proxyHost + '/3')
+                        .replace('https://image.tmdb.org', config.proxyHost)
+                        .replace('http://image.tmdb.org', config.proxyHost);
+                    
+                    if (config.debug) console.log('[TMDB Proxy]', req.url, '→', newUrl);
+                    return { ...req, url: newUrl };
+                }
+                return req;
+            },
+            error: err => {
+                console.error('[TMDB Proxy] Ошибка:', err);
+                return err;
             }
         });
+
+        console.log('[TMDB Proxy] Успешно активирован');
     }
 
-    // Мониторинг изменений DOM
-    new MutationObserver(proxyImages).observe(document, {
-        childList: true,
-        subtree: true
-    });
+    // Старт при полной загрузке
+    if (window.appready) init();
+    else lampa.Listener.follow('app', e => e.type === 'ready' && init());
 
-    console.log('TMDB Proxy успешно загружен');
 })();
