@@ -1,42 +1,34 @@
 (function() {
     'use strict';
     
-    // Проверка, что плагин еще не загружен
-    if (window.tmdbProxyLoaded) return;
-    window.tmdbProxyLoaded = true;
-    
-    console.log('[TMDB Proxy] Встроенная загрузка...');
-    
     const config = {
-        proxyHost: 'https://novomih25.duckdns.org:9091'
+        proxyHost: 'https://novomih25.duckdns.org:9091',
+        credentials: {
+            username: 'ваш_логин', // Замените эти значения
+            password: 'ваш_пароль' // из /etc/nginx/.htpasswd
+        }
     };
 
-    // Ожидание Lampa
     function init() {
-        if (!window.lampa || !lampa.interceptor) {
-            setTimeout(init, 100);
-            return;
-        }
+        if (!window.lampa?.interceptor) return;
         
-        // Перехватчик запросов
         lampa.interceptor.request.add({
             before: req => {
-                if (/themoviedb\.org/.test(req.url)) {
-                    const newUrl = req.url.replace(
-                        /https?:\/\/(api|image)\.themoviedb\.org(\/3)?/, 
-                        config.proxyHost
-                    );
-                    console.log('[TMDB Proxy]', newUrl);
-                    return { ...req, url: newUrl };
+                if (req.url.includes('themoviedb.org')) {
+                    return {
+                        ...req,
+                        url: req.url.replace('themoviedb.org', 'novomih25.duckdns.org:9091'),
+                        headers: {
+                            ...req.headers,
+                            'Authorization': 'Basic ' + btoa(config.credentials.username + ':' + config.credentials.password)
+                        }
+                    };
                 }
                 return req;
             }
         });
-        
-        console.log('[TMDB Proxy] Активирован');
     }
-    
-    // Автозапуск
+
     if (window.appready) init();
     else lampa.Listener.follow('app', e => e.type === 'ready' && init());
 })();
