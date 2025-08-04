@@ -1,42 +1,35 @@
 (function() {
-    'use strict';
+  console.log('TMDB Proxy: Plugin loading...');
+  
+  // Проверка старого API Lampa
+  if (!window.lampa || !lampa.interceptor) {
+    console.error('Lampa API not found or incompatible!');
+    return;
+  }
 
-    if(!window.lampa) return;
-
-    const config = {
-        proxy: "https://novomih25.duckdns.org:9091",
-        patterns: [
-            /api\.themoviedb\.org\/3\/movie/,
-            /api\.themoviedb\.org\/3\/tv/,
-            /api\.themoviedb\.org\/3\/search/
-        ]
-    };
-
-    function init() {
-        if(!lampa.interceptor) return;
-
-        lampa.interceptor.request.add({
-            before: function(req) {
-                if(config.patterns.some(p => p.test(req.url))) {
-                    const newUrl = req.url.replace('https://api.themoviedb.org/3', config.proxy);
-                    console.log('TMDB Proxy:', req.url, '->', newUrl);
-                    return {
-                        ...req,
-                        url: newUrl,
-                        headers: {
-                            ...req.headers,
-                            'X-Proxy': 'TMDB'
-                        }
-                    };
-                }
-                return req;
-            }
-        });
-
-        console.log('TMDB Proxy initialized');
+  // Перехватчик запросов (старый стиль)
+  lampa.interceptor.request.add({
+    before: function(req) {
+      try {
+        console.log('[TMDB Proxy] Intercepted:', req.url);
+        
+        // Пример проксирования:
+        // if (req.url.includes('api.themoviedb.org')) {
+        //   req.url = req.url.replace('api.themoviedb.org', 'ваш-прокси.сервер');
+        // }
+        
+        return req;
+      } catch(e) {
+        console.error('[TMDB Proxy] Error:', e);
+        return req;
+      }
     }
+  });
 
-    if(window.appready) init();
-    else lampa.Listener.follow('app', e => e.type == 'ready' && init());
+  // Простое уведомление о загрузке
+  if (lampa.notice) {
+    lampa.notice.show('TMDB Proxy loaded');
+  }
 
+  console.log('TMDB Proxy: Ready');
 })();
