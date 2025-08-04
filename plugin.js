@@ -1,57 +1,68 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Инициализация...');
+    console.log('[TMDB Proxy] Старт инициализации');
     
-    // Конфигурация (ЗАМЕНИТЕ значения)
     const config = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
         auth: {
-            username: 'ваш_логин', // из /etc/nginx/.htpasswd
+            username: 'ваш_логин', // замените на реальные
             password: 'ваш_пароль'
         },
-        debug: true
+        maxRetries: 30 // лимит попыток
     };
 
-    // Проверка готовности Lampa
-    function init() {
-        if (!window.lampa || !lampa.interceptor) {
-            if (config.debug) console.log('[TMDB Proxy] Ожидание инициализации Lampa...');
-            setTimeout(init, 100);
-            return;
-        }
+    let retryCount = 0;
 
-        // Перехватчик запросов
-        lampa.interceptor.request.add({
-            before: req => {
-                if (/themoviedb\.org/.test(req.url)) {
-                    const newUrl = req.url
-                        .replace('https://api.themoviedb.org/3', config.proxyHost + '/3')
-                        .replace(/https?:\/\/image\.tmdb\.org/, config.proxyHost);
-                    
-                    if (config.debug) console.log('[TMDB Proxy]', req.url, '→', newUrl);
-                    
-                    return {
-                        ...req,
-                        url: newUrl,
-                        headers: {
-                            ...req.headers,
-                            'Authorization': 'Basic ' + btoa(config.auth.username + ':' + config.auth.password)
-                        }
-                    };
-                }
-                return req;
-            },
-            error: err => {
-                console.error('[TMDB Proxy] Ошибка:', err);
-                return err;
-            }
-        });
+    function initPlugin() {
+        retryCount++;
         
-        console.log('[TMDB Proxy] Успешно активирован');
+        if (window.lampa && lampa.interceptor) {
+            console.log('[TMDB Proxy] Lampa найдена, активация...');
+            
+            lampa.interceptor.request.add({
+                before: req => {
+                    if (/themoviedb\.org/.test(req.url)) {
+                        const newUrl = req.url
+                            .replace('api.themoviedb.org', config.proxyHost)
+                            .replace('image.tmdb.org', config.proxyHost);
+                        
+                        console.log('[TMDB Proxy] Проксируем запрос:', req.url);
+                        
+                        return {
+                            ...req,
+                            url: newUrl,
+                            headers: {
+                                ...req.headers,
+                                'Authorization': 'Basic ' + btoa(config.auth.username + ':' + config.auth.password)
+                            }
+                        };
+                    }
+                    return req;
+                },
+                error: err => {
+                    console.error('[TMDB Proxy] Ошибка прокси:', err);
+                    return err;
+                }
+            });
+            
+            console.log('[TMDB Proxy] Успешно активирован!');
+        } 
+        else if (retryCount < config.maxRetries) {
+            console.log(`[TMDB Proxy] Попытка ${retryCount}/${config.maxRetries}`);
+            setTimeout(initPlugin, 500);
+        } 
+        else {
+            console.error('[TMDB Proxy] Lampa не найдена после попыток!');
+        }
     }
 
-    // Автозапуск
-    if (window.appready) init();
-    else lampa.Listener.follow('app', e => e.type === 'ready' && init());
+    // Два способа запуска
+    if (window.appready) {
+        initPlugin();
+    } 
+    else {
+        document.addEventListener('lampa_state_ready', initPlugin);
+        lampa.Listener && lampa.Listener.follow('app', e => e.type === 'ready' && initPlugin());
+    }
 })();
