@@ -4,7 +4,7 @@
     if(!window.lampa) return;
 
     const config = {
-        proxy: "https://your-tmdb-proxy.com/api",
+        proxy: "https://novomih25.duckdns.org",
         patterns: [
             /api\.themoviedb\.org\/3\/movie/,
             /api\.themoviedb\.org\/3\/tv/,
