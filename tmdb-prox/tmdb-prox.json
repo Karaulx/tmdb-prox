@@ -1,6 +1,6 @@
 {
-  "id": "tmdb-prox",  // Только латиница, без дефисов!
-  "name": "TMDB Proxy",
+  "id": "tmdb_proxy",
+  "name": "TMDB Proxy Logger",
   "version": "1.0",
   "component": true,
   "standalone": false,
