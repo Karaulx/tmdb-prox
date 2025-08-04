@@ -11,8 +11,8 @@
         proxyUrl: 'https://novomih25.duckdns.org:9091', // Ваш прокси-сервер
         apiKey: 'a68d078b1475b51c18e6d4d0f44600f8', // Ваш TMDB API ключ
         auth: {
-            username: 'your_username', // Замените на реальные данные
-            password: 'your_password'  // из /etc/nginx/.htpasswd
+            username: 'jackatt', // Замените на реальные данные
+            password: '3p4uh49y'  // из /etc/nginx/.htpasswd
         }
     };
 
