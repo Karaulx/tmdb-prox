@@ -1,6 +1,6 @@
 {
   "id": "tmdb_proxy",
-  "name": "TMDB Proxy Logger",
+  "name": "TMDB Proxy",
   "version": "1.0",
   "component": true,
   "standalone": false,
