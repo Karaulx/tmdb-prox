@@ -1,83 +1,43 @@
 (function() {
     'use strict';
 
-    if (!window.lampa || !lampa.interceptor) {
-        console.error('Lampa API not found');
-        return;
-    }
+    if (!window.lampa) return;
 
     const config = {
+        proxyHost: 'https://novomih25.duckdns.org:9091',
         debug: true,
-        proxyUrl: 'https://novomih25.duckdns.org:9091', // Ваш прокси-сервер
-        apiKey: 'a68d078b1475b51c18e6d4d0f44600f8', // Ваш TMDB API ключ
-        auth: {
-            username: 'jackatt', // Замените на реальные данные
-            password: '3p4uh49y'  // из /etc/nginx/.htpasswd
-        }
+        version: '1.0'
     };
 
-    function log(...args) {
-        if (config.debug) console.log('[TMDB Proxy]', ...args);
-    }
-
-    function base64Auth() {
-        return btoa(`${config.auth.username}:${config.auth.password}`);
-    }
-
-    // Перехватчик запросов
-    lampa.interceptor.request.add({
-        before: function(req) {
-            if (req.url.includes('api.themoviedb.org/3')) {
-                try {
+    // Перехватчик API запросов
+    if (lampa.interceptor) {
+        lampa.interceptor.request.add({
+            before: req => {
+                if (req.url.includes('api.themoviedb.org/3')) {
                     const newUrl = req.url.replace(
                         'https://api.themoviedb.org/3',
-                        config.proxyUrl + '/3'
+                        config.proxyHost + '/3'
                     );
-
-                    log('Proxying request:', req.url, '->', newUrl);
-
-                    return {
-                        ...req,
-                        url: newUrl,
-                        headers: {
-                            ...req.headers,
-                            'Authorization': `Basic ${base64Auth()}`,
-                            'X-Proxy-Source': 'Lampa-TMDB-Proxy'
-                        }
-                    };
-                } catch (e) {
-                    log('Interceptor error:', e);
+                    if (config.debug) console.log('[TMDB Proxy] API:', req.url, '→', newUrl);
+                    return { ...req, url: newUrl };
                 }
-            }
-            return req;
-        },
-        after: function(res) {
-            if (res.url.includes(config.proxyUrl)) {
-                log('Proxied response:', res.status, res.url);
-            }
-            return res;
-        },
-        error: function(err) {
-            log('Request failed:', err);
-            return err;
-        }
-    });
-
-    // Добавляем настройки в интерфейс Lampa
-    if (lampa.SettingsApi) {
-        lampa.SettingsApi.addParam({
-            component: 'network',
-            param: {
-                name: 'tmdb_proxy_active',
-                type: 'trigger',
-                default: true
-            },
-            field: {
-                name: 'Активировать TMDB Proxy',
-                description: 'Перенаправляет запросы через ваш прокси-сервер'
+                return req;
             }
         });
     }
 
-    console.log('TMDB Proxy plugin initialized');
+    // Перехватчик изображений
+    const originalImageGet = lampa.utils.image.get;
+    lampa.utils.image.get = function(url, ...args) {
+        if (url && url.includes('image.tmdb.org')) {
+            url = url.replace(
+                'https://image.tmdb.org',
+                config.proxyHost
+            );
+            if (config.debug) console.log('[TMDB Proxy] Image:', url);
+        }
+        return originalImageGet.call(this, url, ...args);
+    };
+
+    console.log(`TMDB Proxy v${config.version} initialized`);
 })();
