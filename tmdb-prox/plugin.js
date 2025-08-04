@@ -1,111 +1,141 @@
 (function() {
     'use strict';
 
-    console.log('TMDB Proxy: Plugin started');
+    console.log('TMDB Proxy: Plugin initialized');
 
-    // Проверка API Lampa
-    if (!window.lampa || !lampa.interceptor || !lampa.notice) {
-        console.error('Lampa API not found or incomplete!');
+    if (!window.lampa || !lampa.app) {
+        setTimeout(arguments.callee, 100);
         return;
     }
 
-    // Конфигурация плагина
     const config = {
+        active: true,
         debug: true,
-        tmdbProxyUrl: 'https://your-tmdb-proxy.com/api', // Замените на ваш прокси
-        interceptPatterns: [
-            /api\.themoviedb\.org\/3\/movie/,
-            /api\.themoviedb\.org\/3\/tv/,
-            /api\.themoviedb\.org\/3\/search/
-        ]
+        proxyUrl: 'https://your-tmdb-proxy.com/api',
+        originalUrl: 'https://api.themoviedb.org/3'
     };
 
-    // Утилиты
     const utils = {
-        log: (...args) => {
+        log: function(...args) {
             if (config.debug) console.log('[TMDB Proxy]', ...args);
         },
-        showNotice: (msg, type = 'success') => {
-            lampa.notice.show(msg, type);
+        showNotice: function(text, type) {
+            if (lampa.notice) lampa.notice.show(text, type || 'success');
         }
     };
 
-    // Проверяем, нужно ли перехватывать запрос
-    function shouldIntercept(url) {
-        return config.interceptPatterns.some(pattern => pattern.test(url));
-    }
-
-    // Модифицируем URL для прокси
-    function modifyRequestUrl(url) {
-        try {
-            const parsed = new URL(url);
-            const newUrl = new URL(config.tmdbProxyUrl);
-            
-            // Переносим путь и параметры
-            newUrl.pathname = parsed.pathname;
-            parsed.searchParams.forEach((value, key) => {
-                newUrl.searchParams.append(key, value);
-            });
-
-            utils.log(`Proxying request: ${url} -> ${newUrl.toString()}`);
-            return newUrl.toString();
-        } catch (e) {
-            utils.log('Error modifying URL:', e);
-            return url;
+    function interceptRequests() {
+        if (!lampa.interceptor) {
+            utils.log('Interceptor API not available');
+            return;
         }
-    }
 
-    // Инициализация перехватчика
-    function initInterceptor() {
-        const interceptor = {
-            before: (req) => {
-                if (shouldIntercept(req.url)) {
-                    req.url = modifyRequestUrl(req.url);
-                    req.headers = req.headers || {};
-                    req.headers['X-Proxy-Source'] = 'Lampa-TMDB-Proxy';
+        lampa.interceptor.request.add({
+            before: function(request) {
+                if (!config.active) return request;
+                
+                try {
+                    if (request.url.includes(config.originalUrl)) {
+                        const newUrl = request.url.replace(
+                            config.originalUrl, 
+                            config.proxyUrl
+                        );
+                        
+                        utils.log('Intercepted request:', request.url, '->', newUrl);
+                        
+                        return {
+                            ...request,
+                            url: newUrl,
+                            headers: {
+                                ...request.headers,
+                                'X-Proxy-Request': 'true'
+                            }
+                        };
+                    }
+                } catch (e) {
+                    utils.log('Interception error:', e);
                 }
-                return req;
+                
+                return request;
             },
-            after: (res) => {
-                if (shouldIntercept(res.url)) {
-                    utils.log(`Proxied response from: ${res.url}`);
-                    // Здесь можно модифицировать ответ при необходимости
-                }
-                return res;
-            },
-            error: (err) => {
-                utils.log('Request error:', err);
-                return err;
-            }
-        };
-
-        lampa.interceptor.request.add(interceptor);
-        utils.log('Interceptor initialized');
-    }
-
-    // Инициализация плагина
-    function initPlugin() {
-        try {
-            initInterceptor();
-            utils.showNotice('TMDB Proxy activated');
             
-            // Добавляем CSS для возможных будущих UI-элементов
+            after: function(response) {
+                if (config.debug && response.url.includes(config.proxyUrl)) {
+                    utils.log('Proxied response:', response);
+                }
+                return response;
+            },
+            
+            error: function(error) {
+                utils.log('Request error:', error);
+                return error;
+            }
+        });
+    }
+
+    function addSettings() {
+        if (!lampa.SettingsApi) return;
+        
+        lampa.SettingsApi.addParam({
+            component: 'network',
+            param: {
+                name: 'tmdb_proxy_active',
+                type: 'trigger',
+                default: config.active
+            },
+            field: {
+                name: 'Активировать TMDB Proxy',
+                description: 'Перенаправляет запросы к TMDB через прокси'
+            },
+            onChange: (value) => {
+                config.active = value;
+                utils.showNotice('TMDB Proxy ' + (value ? 'активирован' : 'деактивирован'));
+            }
+        });
+        
+        lampa.SettingsApi.addParam({
+            component: 'network',
+            param: {
+                name: 'tmdb_proxy_url',
+                type: 'text',
+                default: config.proxyUrl
+            },
+            field: {
+                name: 'URL прокси-сервера',
+                description: 'Адрес вашего TMDB прокси'
+            },
+            onChange: (value) => {
+                config.proxyUrl = value;
+                utils.showNotice('URL прокси обновлен');
+            }
+        });
+    }
+
+    function init() {
+        interceptRequests();
+        addSettings();
+        utils.showNotice('TMDB Proxy загружен');
+        
+        if (lampa.utils && lampa.utils.addStyle) {
             lampa.utils.addStyle(`
                 .tmdb-proxy-badge {
-                    background: rgba(1, 180, 228, 0.9);
+                    background: rgba(3, 37, 65, 0.8);
                     color: white;
                     padding: 2px 6px;
                     border-radius: 4px;
                     font-size: 11px;
-                    margin-left: 5px;
+                    margin-left: 8px;
+                    display: inline-block;
                 }
             `);
-        } catch (e) {
-            console.error('TMDB Proxy init error:', e);
         }
     }
 
-    // Запускаем после небольшой задержки, чтобы Lampa полностью загрузилась
-    setTimeout(initPlugin, 1500);
-
+    if (window.appready) {
+        init();
+    } else {
+        lampa.Listener.follow('app', function(e) {
+            if (e.type == 'ready') init();
+        });
+    }
 })();
