@@ -4,7 +4,7 @@
     if(!window.lampa) return;
 
     const config = {
-        proxy: "https://novomih25.duckdns.org",
+        proxy: "https://novomih25.duckdns.org:9091",
         patterns: [
             /api\.themoviedb\.org\/3\/movie/,
             /api\.themoviedb\.org\/3\/tv/,
