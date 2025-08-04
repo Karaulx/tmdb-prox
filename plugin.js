@@ -1,35 +1,30 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Запуск плагина...');
+    console.log('[TMDB Proxy] Инициализация...');
     
-    // Конфигурация (ОБЯЗАТЕЛЬНО замените значения)
+    // Конфигурация (ЗАМЕНИТЕ значения)
     const config = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
-        credentials: {
+        auth: {
             username: 'ваш_логин', // из /etc/nginx/.htpasswd
             password: 'ваш_пароль'
         },
         debug: true
     };
 
-    // Генерация заголовка авторизации
-    function getAuthHeader() {
-        return 'Basic ' + btoa(config.credentials.username + ':' + config.credentials.password);
-    }
-
-    // Ожидание готовности Lampa
-    function waitLampa() {
+    // Проверка готовности Lampa
+    function init() {
         if (!window.lampa || !lampa.interceptor) {
             if (config.debug) console.log('[TMDB Proxy] Ожидание инициализации Lampa...');
-            setTimeout(waitLampa, 200);
+            setTimeout(init, 100);
             return;
         }
-        
+
         // Перехватчик запросов
         lampa.interceptor.request.add({
             before: req => {
-                if (req.url.includes('themoviedb.org')) {
+                if (/themoviedb\.org/.test(req.url)) {
                     const newUrl = req.url
                         .replace('https://api.themoviedb.org/3', config.proxyHost + '/3')
                         .replace(/https?:\/\/image\.tmdb\.org/, config.proxyHost);
@@ -41,7 +36,7 @@
                         url: newUrl,
                         headers: {
                             ...req.headers,
-                            'Authorization': getAuthHeader()
+                            'Authorization': 'Basic ' + btoa(config.auth.username + ':' + config.auth.password)
                         }
                     };
                 }
@@ -57,6 +52,6 @@
     }
 
     // Автозапуск
-    if (window.appready) waitLampa();
-    else lampa.Listener.follow('app', e => e.type === 'ready' && waitLampa());
+    if (window.appready) init();
+    else lampa.Listener.follow('app', e => e.type === 'ready' && init());
 })();
