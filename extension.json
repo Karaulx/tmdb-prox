@@ -1,5 +1,5 @@
 {
-  "id": "tmdb-proxy",  // Только латиница, без дефисов!
+  "id": "tmdb-prox",  // Только латиница, без дефисов!
   "name": "TMDB Proxy",
   "version": "1.0",
   "component": true,
