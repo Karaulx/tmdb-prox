@@ -1,7 +1,7 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Запуск финальной версии');
+    console.log('[TMDB Proxy] Запуск v4.0');
     
     const CONFIG = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
@@ -12,18 +12,20 @@
         debug: true
     };
 
+    function isLampaReady() {
+        return window.lampa?.interceptor?.request?.add instanceof Function;
+    }
+
     function activateProxy() {
         try {
-            const interceptor = window.lampa.interceptor;
-            
-            interceptor.request.add({
+            lampa.interceptor.request.add({
                 before: req => {
                     if (/themoviedb\.org/.test(req.url)) {
                         const newUrl = req.url
                             .replace(/(https?:)?\/\/api\.themoviedb\.org\/3/, CONFIG.proxyHost + '/3')
                             .replace(/(https?:)?\/\/image\.tmdb\.org/, CONFIG.proxyHost);
                         
-                        CONFIG.debug && console.log('[TMDB Proxy] Проксирование:', req.url.substring(0, 50) + '...');
+                        CONFIG.debug && console.log('[TMDB Proxy] Проксирование:', req.url);
                         
                         return {
                             ...req,
@@ -35,10 +37,13 @@
                         };
                     }
                     return req;
+                },
+                error: err => {
+                    console.error('[TMDB Proxy] Ошибка:', err);
+                    return err;
                 }
             });
-            
-            console.log('[TMDB Proxy] Успешно подключен к Lampa!');
+            console.log('[TMDB Proxy] Успешно активирован!');
             return true;
         } catch (e) {
             console.error('[TMDB Proxy] Ошибка активации:', e);
@@ -47,26 +52,32 @@
     }
 
     function waitForLampa(attempt = 0) {
-        if (window.lampa?.interceptor) {
+        if (isLampaReady()) {
             return activateProxy();
         }
-        
-        if (attempt > 30) {
-            console.error('[TMDB Proxy] Lampa не обнаружена после 30 попыток');
+
+        if (attempt >= 50) {
+            console.error('[TMDB Proxy] Lampa не загрузилась после 50 попыток');
             return false;
         }
-        
+
         setTimeout(() => {
-            CONFIG.debug && console.log(`[TMDB Proxy] Ожидание Lampa (${attempt + 1}/30)`);
+            CONFIG.debug && console.log(`[TMDB Proxy] Проверка готовности (${attempt + 1}/50)`);
             waitForLampa(attempt + 1);
         }, 300);
     }
 
-    // Основной запуск
-    if (document.readyState === 'complete') {
-        waitForLampa();
-    } else {
-        window.addEventListener('load', () => waitForLampa());
-        document.addEventListener('DOMContentLoaded', () => waitForLampa());
-    }
+    // Все возможные методы инициализации
+    const initMethods = [
+        () => window.appready && waitForLampa(),
+        () => window.lampa?.Listener?.follow('app', e => e.type === 'ready' && waitForLampa()),
+        () => document.addEventListener('DOMContentLoaded', waitForLampa),
+        () => window.addEventListener('load', waitForLampa),
+        () => setTimeout(waitForLampa, 1000)
+    ];
+
+    // Запуск всех методов инициализации
+    initMethods.forEach(method => {
+        try { method(); } catch (e) { console.error(e); }
+    });
 })();
