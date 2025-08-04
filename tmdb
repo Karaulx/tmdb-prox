@@ -1,0 +1,8 @@
+{
+  "id": "tmdb_proxy",
+  "name": "TMDB Proxy",
+  "version": "1.0",
+  "component": true,
+  "standalone": false,
+  "frontend": "plugin.js"
+}
