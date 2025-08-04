@@ -1,57 +1,51 @@
 (function() {
     'use strict';
 
-    if (!window.lampa) return;
+    // Проверка API Lampa
+    if (!window.lampa || !lampa.interceptor) {
+        console.error('Lampa API не обнаружена');
+        return;
+    }
 
     const config = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
         debug: true
     };
 
-    // Функция для проксирования URL
+    // Основная функция проксирования
     function proxyUrl(url) {
         if (!url || typeof url !== 'string') return url;
-        
         return url.replace(
-            /^https?:\/\/(image\.tmdb\.org|api\.themoviedb\.org\/3)/, 
+            /^(http:|https:)?\/\/(api\.themoviedb\.org|image\.tmdb\.org)/, 
             config.proxyHost
         );
     }
 
-    // Перехватчик API запросов
-    if (lampa.interceptor) {
-        lampa.interceptor.request.add({
-            before: req => {
-                if (req.url.includes('api.themoviedb.org/3')) {
-                    const newUrl = proxyUrl(req.url);
-                    if (config.debug) console.log('[TMDB Proxy] API:', req.url, '→', newUrl);
-                    return { ...req, url: newUrl };
-                }
-                return req;
+    // Перехват API запросов
+    lampa.interceptor.request.add({
+        before: req => {
+            const newUrl = proxyUrl(req.url);
+            if (newUrl !== req.url && config.debug) {
+                console.log('[TMDB Proxy]', req.url, '→', newUrl);
+            }
+            return { ...req, url: newUrl };
+        }
+    });
+
+    // Перехват изображений в DOM
+    function proxyImages() {
+        document.querySelectorAll('img').forEach(img => {
+            if (img.src.includes('image.tmdb.org')) {
+                img.src = proxyUrl(img.src);
             }
         });
     }
 
-    // Переопределяем все методы работы с изображениями
-    const imageHandlers = ['image', 'background', 'poster', 'cover'];
-    imageHandlers.forEach(handler => {
-        if (lampa.utils[handler]?.get) {
-            const originalGet = lampa.utils[handler].get;
-            lampa.utils[handler].get = function(url, ...args) {
-                return originalGet.call(this, proxyUrl(url), ...args);
-            };
-        }
+    // Мониторинг изменений DOM
+    new MutationObserver(proxyImages).observe(document, {
+        childList: true,
+        subtree: true
     });
 
-    // Перехватываем создание DOM элементов с изображениями
-    const originalCreate = Element.prototype.createElement;
-    Element.prototype.createElement = function(tagName, options) {
-        const element = originalCreate.call(this, tagName, options);
-        if (tagName === 'img' && element.src.includes('image.tmdb.org')) {
-            element.src = proxyUrl(element.src);
-        }
-        return element;
-    };
-
-    console.log('TMDB Proxy initialized');
+    console.log('TMDB Proxy успешно загружен');
 })();
