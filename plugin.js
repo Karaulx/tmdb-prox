@@ -1,68 +1,86 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Старт инициализации');
+    console.log('[TMDB Proxy] Запуск v2.1');
     
-    const config = {
+    const CONFIG = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
-        auth: {
-            username: 'ваш_логин', // замените на реальные
+        credentials: {
+            username: 'ваш_логин',
             password: 'ваш_пароль'
         },
-        maxRetries: 30 // лимит попыток
+        debug: true
     };
 
-    let retryCount = 0;
-
-    function initPlugin() {
-        retryCount++;
-        
-        if (window.lampa && lampa.interceptor) {
-            console.log('[TMDB Proxy] Lampa найдена, активация...');
-            
-            lampa.interceptor.request.add({
-                before: req => {
-                    if (/themoviedb\.org/.test(req.url)) {
-                        const newUrl = req.url
-                            .replace('api.themoviedb.org', config.proxyHost)
-                            .replace('image.tmdb.org', config.proxyHost);
-                        
-                        console.log('[TMDB Proxy] Проксируем запрос:', req.url);
-                        
-                        return {
-                            ...req,
-                            url: newUrl,
-                            headers: {
-                                ...req.headers,
-                                'Authorization': 'Basic ' + btoa(config.auth.username + ':' + config.auth.password)
-                            }
-                        };
-                    }
-                    return req;
-                },
-                error: err => {
-                    console.error('[TMDB Proxy] Ошибка прокси:', err);
-                    return err;
-                }
-            });
-            
-            console.log('[TMDB Proxy] Успешно активирован!');
-        } 
-        else if (retryCount < config.maxRetries) {
-            console.log(`[TMDB Proxy] Попытка ${retryCount}/${config.maxRetries}`);
-            setTimeout(initPlugin, 500);
-        } 
-        else {
-            console.error('[TMDB Proxy] Lampa не найдена после попыток!');
-        }
+    function log(message) {
+        if (CONFIG.debug) console.log(`[TMDB Proxy] ${message}`);
     }
 
-    // Два способа запуска
-    if (window.appready) {
-        initPlugin();
-    } 
+    function init() {
+        if (!window.lampa) {
+            log('Lampa не обнаружена');
+            return false;
+        }
+
+        if (!lampa.interceptor) {
+            log('Interceptor не доступен');
+            return false;
+        }
+
+        const authHeader = 'Basic ' + btoa(
+            CONFIG.credentials.username + ':' + CONFIG.credentials.password
+        );
+
+        lampa.interceptor.request.add({
+            before: request => {
+                if (request.url.includes('themoviedb.org')) {
+                    const proxiedUrl = request.url
+                        .replace('api.themoviedb.org', CONFIG.proxyHost)
+                        .replace('image.tmdb.org', CONFIG.proxyHost);
+                    
+                    log(`Проксирование: ${request.url} → ${proxiedUrl}`);
+                    
+                    return {
+                        ...request,
+                        url: proxiedUrl,
+                        headers: {
+                            ...request.headers,
+                            'Authorization': authHeader
+                        }
+                    };
+                }
+                return request;
+            },
+            error: error => {
+                console.error('[TMDB Proxy] Ошибка:', error);
+                return error;
+            }
+        });
+
+        log('Успешно активирован!');
+        return true;
+    }
+
+    function waitLampa(retry = 0) {
+        if (retry > 20) {
+            console.error('[TMDB Proxy] Превышено количество попыток');
+            return;
+        }
+
+        if (init()) return;
+        
+        setTimeout(() => {
+            log(`Повторная проверка (${retry + 1}/20)`);
+            waitLampa(retry + 1);
+        }, 500);
+    }
+
+    // Автозапуск
+    if (window.appready) waitLampa();
     else {
-        document.addEventListener('lampa_state_ready', initPlugin);
-        lampa.Listener && lampa.Listener.follow('app', e => e.type === 'ready' && initPlugin());
+        document.addEventListener('DOMContentLoaded', waitLampa);
+        if (window.lampa?.Listener) {
+            lampa.Listener.follow('app', e => e.type === 'ready' && waitLampa());
+        }
     }
 })();
