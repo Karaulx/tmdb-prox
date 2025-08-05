@@ -1,85 +1,108 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Запуск Ultimate Edition');
+    console.log('[TMDB Proxy] Запуск v4.3');
     
     const CONFIG = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
         credentials: {
             username: 'jackett',
             password: '3p4uh49y'
-        }
+        },
+        debug: true
     };
 
-    // 1. Попытка найти Lampa в нестандартных местах
-    function findLampa() {
-        return window.lampa || 
-               window.app?.lampa || 
-               window.parent?.lampa ||
-               Object.values(window).find(v => v?.interceptor);
-    }
-
-    // 2. Альтернативный метод перехвата
-    function hijackFetch() {
-        const originalFetch = window.fetch;
-        window.fetch = async function(url, options) {
-            if (/themoviedb\.org/.test(url)) {
-                const newUrl = url
-                    .replace(/api\.themoviedb\.org/, CONFIG.proxyHost)
-                    .replace(/image\.tmdb\.org/, CONFIG.proxyHost);
-                
-                options = options || {};
-                options.headers = new Headers(options.headers);
-                options.headers.set('Authorization', 
-                    'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password));
-                
-                console.log('[TMDB Proxy] Перехвачен запрос:', url);
-                return originalFetch(newUrl, options);
+    // 1. Проверка доступности прокси
+    function checkProxy() {
+        return fetch(`${CONFIG.proxyHost}/3/movie/550`, {
+            headers: {
+                'Authorization': 'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password)
             }
-            return originalFetch(url, options);
-        };
-        console.log('[TMDB Proxy] Активирован перехват fetch!');
+        })
+        .then(r => r.ok)
+        .catch(() => false);
     }
 
-    // 3. Основная инициализация
-    function init() {
-        const lampa = findLampa();
-        
-        if (lampa?.interceptor) {
+    // 2. Универсальный перехватчик
+    function setupProxy() {
+        // Для Lampa 3.x/4.x
+        if (window.lampa?.interceptor?.request?.add) {
             lampa.interceptor.request.add({
-                before: req => {
-                    if (/themoviedb\.org/.test(req.url)) {
-                        req.url = req.url
-                            .replace(/api\.themoviedb\.org/, CONFIG.proxyHost)
-                            .replace(/image\.tmdb\.org/, CONFIG.proxyHost);
-                        req.headers.set('Authorization', 
-                            'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password));
-                        console.log('[TMDB Proxy] Прокси через Lampa:', req.url);
-                    }
-                    return req;
+                before: req => processRequest(req),
+                error: err => {
+                    console.error('[TMDB Proxy] Ошибка:', err);
+                    return err;
                 }
             });
-            console.log('[TMDB Proxy] Успешно подключен к Lampa API!');
-        } else {
-            hijackFetch();
+            return true;
         }
+        
+        // Для других версий
+        hijackNativeRequests();
+        return false;
     }
 
-    // Запуск с прогрессивной задержкой
-    let attempts = 0;
-    const tryInit = () => {
-        attempts++;
-        if (attempts <= 100) {
-            setTimeout(() => {
-                if (document.readyState === 'complete') {
-                    init();
-                } else {
-                    tryInit();
+    function hijackNativeRequests() {
+        // Перехват XMLHttpRequest
+        const originalXHR = window.XMLHttpRequest;
+        window.XMLHttpRequest = function() {
+            const xhr = new originalXHR();
+            const originalOpen = xhr.open;
+            
+            xhr.open = function(method, url) {
+                if (/themoviedb\.org/.test(url)) {
+                    url = rewriteUrl(url);
+                    arguments[1] = url;
+                    xhr.setRequestHeader('Authorization', 
+                        'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password));
                 }
-            }, attempts < 50 ? 300 : 1000);
+                return originalOpen.apply(xhr, arguments);
+            };
+            return xhr;
+        };
+
+        // Перехват fetch
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {
+            if (typeof input === 'string' && /themoviedb\.org/.test(input)) {
+                input = rewriteUrl(input);
+                init = init || {};
+                init.headers = new Headers(init.headers);
+                init.headers.set('Authorization', 
+                    'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password));
+            }
+            return originalFetch(input, init);
+        };
+
+        console.log('[TMDB Proxy] Активирован низкоуровневый перехват!');
+    }
+
+    function rewriteUrl(url) {
+        return url
+            .replace(/https?:\/\/api\.themoviedb\.org\/3/, CONFIG.proxyHost + '/3')
+            .replace(/https?:\/\/image\.tmdb\.org/, CONFIG.proxyHost);
+    }
+
+    // 3. Инициализация
+    async function init() {
+        const proxyAvailable = await checkProxy();
+        if (!proxyAvailable) {
+            console.error('[TMDB Proxy] Прокси недоступен! Проверьте настройки.');
+            return;
         }
-    };
-    
-    document.addEventListener('DOMContentLoaded', tryInit);
-    if (document.readyState === 'complete') tryInit();
+
+        if (!setupProxy()) {
+            console.log('[TMDB Proxy] Используется альтернативный перехват');
+        }
+        
+        console.log('[TMDB Proxy] Готово! Все запросы перенаправляются.');
+    }
+
+    // Запускаем после полной загрузки
+    if (document.readyState === 'complete') {
+        init();
+    } else {
+        window.addEventListener('load', init);
+        document.addEventListener('DOMContentLoaded', init);
+    }
 })();
