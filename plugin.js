@@ -1,7 +1,7 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Инициализация v6.0 (event-based)');
+    console.log('[TMDB Proxy] Инициализация v7.0 (Stable)');
     
     const CONFIG = {
         proxyHost: 'https://novomih25.duckdns.org:9091',
@@ -14,19 +14,21 @@
 
     // 1. Основная функция инициализации
     function initPlugin() {
-        // Проверяем доступность Lampa API
-        if (!window.lampa || !window.lampa.interceptor) {
-            console.error('[TMDB Proxy] Необходимые компоненты Lampa недоступны');
-            return;
+        // Проверяем наличие необходимых компонентов Lampa
+        if (!window.lampa?.interceptor?.request?.add) {
+            console.error('[TMDB Proxy] Требуемые компоненты Lampa не найдены');
+            return false;
         }
 
-        console.log('[TMDB Proxy] Начало инициализации');
+        console.log('[TMDB Proxy] Настройка перехватчика запросов');
         
         // Настройка перехватчика
         lampa.interceptor.request.add({
             before: request => {
                 if (isTmdbRequest(request.url)) {
-                    return modifyRequest(request);
+                    const modified = modifyRequest(request);
+                    if (CONFIG.debug) console.log('[TMDB Proxy] Перехвачен запрос:', request.url, '→', modified.url);
+                    return modified;
                 }
                 return request;
             },
@@ -37,74 +39,17 @@
         });
 
         console.log('[TMDB Proxy] Успешно инициализирован');
-        
-        // Добавляем пункт меню для проверки
-        addMenuButton();
+        return true;
     }
 
-    // 2. Добавление кнопки в меню
-    function addMenuButton() {
-        if (!window.lampa?.Activity) return;
-        
-        setTimeout(() => {
-            try {
-                const menuItem = $(`
-                    <li class="menu__item selector">
-                        <div class="menu__ico">
-                            <svg viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/>
-                                <path d="M12 7c-.55 0-1 .45-1 1v3H8c-.55 0-1 .45-1 1s.45 1 1 1h3v3c0 .55.45 1 1 1s1-.45 1-1v-3h3c.55 0 1-.45 1-1s-.45-1-1-1h-3V8c0-.55-.45-1-1-1z"/>
-                            </svg>
-                        </div>
-                        <div class="menu__text">Проверить TMDB Proxy</div>
-                    </li>
-                `);
-                
-                menuItem.on('hover:enter', () => {
-                    checkProxyStatus();
-                });
-                
-                $('.menu .menu__list').eq(0).append(menuItem);
-            } catch (e) {
-                console.error('[TMDB Proxy] Ошибка добавления пункта меню:', e);
-            }
-        }, 2000);
-    }
-
-    // 3. Проверка статуса прокси
-    async function checkProxyStatus() {
-        try {
-            lampa.Noty.show('Проверка TMDB Proxy...');
-            
-            const response = await fetch(`${CONFIG.proxyHost}/3/movie/550`, {
-                headers: {
-                    'Authorization': 'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password)
-                }
-            });
-            
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
-            if (data && data.id === 550) {
-                lampa.Noty.show('TMDB Proxy работает корректно');
-            } else {
-                throw new Error('Неверный ответ от прокси');
-            }
-        } catch (error) {
-            console.error('[TMDB Proxy] Ошибка проверки прокси:', error);
-            lampa.Noty.show('Ошибка подключения к TMDB Proxy');
-        }
-    }
-
-    // Вспомогательные функции
+    // 2. Проверка типа запроса
     function isTmdbRequest(url) {
         return /themoviedb\.org|image\.tmdb\.org/.test(url);
     }
 
+    // 3. Модификация запроса
     function modifyRequest(request) {
         const newUrl = rewriteUrl(request.url);
-        if (CONFIG.debug) console.log('[TMDB Proxy] Перехвачен запрос:', request.url, '→', newUrl);
-        
         return {
             ...request,
             url: newUrl,
@@ -115,20 +60,49 @@
         };
     }
 
+    // 4. Переписывание URL
     function rewriteUrl(url) {
         return url
             .replace(/https?:\/\/api\.themoviedb\.org\/3/, CONFIG.proxyHost + '/3')
             .replace(/https?:\/\/image\.tmdb\.org/, CONFIG.proxyHost);
     }
 
-    // 4. Запуск плагина
-    if (window.appready) {
-        initPlugin();
-    } else {
-        Lampa.Listener.follow('app', function(e) {
-            if (e.type == 'ready') {
+    // 5. Стратегия запуска
+    function startPlugin() {
+        // Вариант 1: Lampa уже загружена
+        if (window.lampa) {
+            initPlugin();
+            return;
+        }
+
+        // Вариант 2: Ожидание через Listener API
+        if (window.Lampa?.Listener) {
+            Lampa.Listener.follow('app', function(e) {
+                if (e.type === 'ready') {
+                    initPlugin();
+                }
+            });
+            return;
+        }
+
+        // Вариант 3: Резервный таймер (максимум 5 попыток)
+        let attempts = 0;
+        const maxAttempts = 5;
+        const interval = setInterval(() => {
+            attempts++;
+            if (window.lampa) {
+                clearInterval(interval);
                 initPlugin();
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                console.error('[TMDB Proxy] Не удалось инициализировать (таймаут ожидания Lampa)');
             }
-        });
+        }, 1000);
+    }
+
+    // Защита от повторной инициализации
+    if (!window.tmdbProxyInitialized) {
+        window.tmdbProxyInitialized = true;
+        startPlugin();
     }
 })();
