@@ -5,7 +5,7 @@
     
     const CONFIG = {
         // Основной прокси
-        proxyHost: 'https://novomih25.duckdns.org:9091',
+        proxyHost: 'novomih25.duckdns.org:9091',
         // Резервный прокси (если основной недоступен)
         fallbackProxy: 'https://your-backup-proxy.com',
         credentials: {
