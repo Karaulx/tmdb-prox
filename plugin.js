@@ -4,10 +4,10 @@
     console.log('[TMDB Proxy] Запуск v4.0');
     
     const CONFIG = {
-        proxyHost: '',
+        proxyHost: 'novomih25.duckdns.org',
         credentials: {
-            username: '',
-            password: ''
+            username: 'jackett',
+            password: '3p4uh49y'
         },
         debug: true
     };
