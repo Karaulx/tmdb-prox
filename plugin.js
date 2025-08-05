@@ -1,171 +1,131 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Инициализация v12.0');
+    console.log('[TMDB Proxy] Инициализация v12.1');
     
     const CONFIG = {
-        // Основной прокси
+        // Основные прокси-серверы
         proxies: [
-            {
-                url: 'https://novomih25.duckdns.org:9092',
-                auth: 'Basic ' + btoa('jackett:3p4uh49y')
-            },
-            // Резервные прокси (добавьте свои)
-            {
-                url: 'https://tmdb-proxy-alternate.example.com',
-                auth: 'Basic ' + btoa('username:password')
-            }
+            'https://novomih25.duckdns.org:9092',
+            'https://tmdb-proxy-alternate.example.com'
         ],
-        // Прямые URL как последний резерв
-        directUrls: {
-            api: 'https://api.themoviedb.org/3',
-            images: 'https://image.tmdb.org'
+        // Резервные серверы
+        fallbacks: [
+            'https://api.themoviedb.org/3',
+            'https://tmdb-proxy-backup.example.com'
+        ],
+        credentials: {
+            username: 'jackett',
+            password: '3p4uh49y'
         },
-        debug: true,
-        testEndpoint: '/movie/550',
-        timeout: 3000
+        timeout: 5000 // 5 секунд на проверку
     };
 
-    // 1. Улучшенная проверка доступности
-    async function testConnection(url, auth) {
+    // 1. Проверка доступности сервера
+    async function testConnection(url) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), CONFIG.timeout);
+            const timeout = setTimeout(() => controller.abort(), CONFIG.timeout);
             
-            const response = await fetch(url + CONFIG.testEndpoint, {
-                headers: { 'Authorization': auth },
-                signal: controller.signal
+            const response = await fetch(`${url}/movie/550`, {
+                signal: controller.signal,
+                headers: {
+                    'Authorization': 'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password)
+                }
             });
             
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
-            return data && data.id === 550;
-        } catch (error) {
-            if (CONFIG.debug) console.log(`[TMDB Proxy] Тест ${url}:`, error.message);
+            clearTimeout(timeout);
+            return response.ok;
+        } catch (e) {
+            console.log(`[TMDB Proxy] Тест ${url}:`, e.message);
             return false;
         }
     }
 
     // 2. Выбор рабочего соединения
     async function selectConnection() {
-        // Проверяем все прокси
+        // Проверка основных прокси
         for (const proxy of CONFIG.proxies) {
-            const fullUrl = proxy.url + CONFIG.testEndpoint;
-            if (await testConnection(proxy.url, proxy.auth)) {
-                return {
-                    type: 'proxy',
-                    url: proxy.url,
-                    auth: proxy.auth
-                };
+            if (await testConnection(proxy)) {
+                console.log(`[TMDB Proxy] Используется прокси: ${proxy}`);
+                return proxy;
             }
         }
         
-        // Проверяем прямое соединение как последний вариант
-        if (await testConnection(CONFIG.directUrls.api, '')) {
-            console.warn('[TMDB Proxy] Используем прямое соединение с TMDB');
-            return {
-                type: 'direct',
-                apiUrl: CONFIG.directUrls.api,
-                imageUrl: CONFIG.directUrls.images
-            };
+        // Проверка резервных
+        for (const fallback of CONFIG.fallbacks) {
+            if (await testConnection(fallback)) {
+                console.warn(`[TMDB Proxy] Используется резерв: ${fallback}`);
+                return fallback;
+            }
         }
         
         throw new Error('Нет доступных соединений');
     }
 
-    // 3. Перехватчик запросов
-    function setupInterceptor(connection) {
-        const originalFetch = window.fetch;
-        
-        window.fetch = async function(input, init) {
-            const url = typeof input === 'string' ? input : input.url;
-            
-            if (!url) return originalFetch(input, init);
-            
-            try {
-                // Для API запросов
-                if (url.includes('api.themoviedb.org')) {
-                    const newUrl = connection.type === 'proxy' 
-                        ? url.replace(/https?:\/\/api\.themoviedb\.org\/3/, connection.url + '/3')
-                        : url;
-                    
-                    const newInit = init ? {...init} : {};
-                    newInit.headers = new Headers(newInit.headers || {});
-                    
-                    if (connection.type === 'proxy') {
-                        newInit.headers.set('Authorization', connection.auth);
-                    }
-                    
-                    if (CONFIG.debug) console.log('[TMDB Proxy] API запрос:', newUrl);
-                    return await originalFetch(newUrl, newInit);
-                }
-                
-                // Для изображений
-                if (url.includes('image.tmdb.org')) {
-                    const newUrl = connection.type === 'proxy'
-                        ? url.replace(/https?:\/\/image\.tmdb\.org/, connection.url)
-                        : url;
-                    
-                    if (CONFIG.debug) console.log('[TMDB Proxy] Запрос изображения:', newUrl);
-                    return await originalFetch(newUrl, init);
-                }
-            } catch (error) {
-                console.error('[TMDB Proxy] Ошибка перехвата:', error);
-            }
-            
-            return originalFetch(input, init);
-        };
-
-        console.log('[TMDB Proxy] Активирован для:', connection.type);
-    }
-
-    // 4. Инициализация с диагностикой
-    async function init() {
+    // 3. Инициализация перехватчика
+    async function initProxy() {
         try {
-            const connection = await selectConnection();
-            setupInterceptor(connection);
+            const activeProxy = await selectConnection();
             
-            console.log('[TMDB Proxy] Успешно инициализирован');
-            
-            // Добавляем пункт меню для диагностики
-            if (window.lampa?.Activity) {
-                const menuItem = $(`
-                    <li class="menu__item selector">
-                        <div class="menu__ico">🔧</div>
-                        <div class="menu__text">TMDB Proxy Status</div>
-                    </li>
-                `);
-                
-                menuItem.on('hover:enter', () => {
-                    Lampa.Noty.show(`
-                        TMDB Proxy: ${connection.type}<br>
-                        API: ${connection.type === 'proxy' ? connection.url : connection.apiUrl}<br>
-                        Images: ${connection.type === 'proxy' ? connection.url : connection.imageUrl}
-                    `, 10);
+            // Для Lampa 3.x/4.x
+            if (window.lampa?.interceptor?.request?.add) {
+                lampa.interceptor.request.add({
+                    before: req => {
+                        if (/themoviedb\.org/.test(req.url)) {
+                            req.url = req.url
+                                .replace(/api\.themoviedb\.org\/3/, activeProxy + '/3')
+                                .replace(/image\.tmdb\.org/, activeProxy);
+                            req.headers.set('Authorization', 
+                                'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password));
+                        }
+                        return req;
+                    }
                 });
-                
-                $('.menu .menu__list').eq(0).append(menuItem);
+                console.log('[TMDB Proxy] Успешно подключен к Lampa API');
+            } else {
+                console.warn('[TMDB Proxy] Lampa API не найден, используется низкоуровневый перехват');
+                setupGlobalProxy(activeProxy);
             }
-        } catch (error) {
-            console.error('[TMDB Proxy] Критическая ошибка:', error);
-            Lampa.Noty.show('TMDB Proxy: ' + error.message, 10);
+            
+        } catch (e) {
+            console.error('[TMDB Proxy] Критическая ошибка:', e);
         }
     }
 
-    // Запуск
-    if (!window.tmdbProxyInitialized) {
-        window.tmdbProxyInitialized = true;
-        
-        // Отложенный запуск
-        setTimeout(() => {
-            if (document.readyState === 'complete') init();
-            else {
-                window.addEventListener('load', init);
-                document.addEventListener('DOMContentLoaded', init);
+    // 4. Глобальный перехват (если Lampa не обнаружена)
+    function setupGlobalProxy(proxyUrl) {
+        const originalFetch = window.fetch;
+        window.fetch = async function(input, init) {
+            if (typeof input === 'string' && /themoviedb\.org/.test(input)) {
+                input = input
+                    .replace(/api\.themoviedb\.org\/3/, proxyUrl + '/3')
+                    .replace(/image\.tmdb\.org/, proxyUrl);
+                
+                init = init || {};
+                init.headers = new Headers(init.headers);
+                init.headers.set('Authorization', 
+                    'Basic ' + btoa(CONFIG.credentials.username + ':' + CONFIG.credentials.password));
             }
-        }, 2000);
+            return originalFetch(input, init);
+        };
+    }
+
+    // Запуск с защитой от таймаутов
+    function safeInit() {
+        const initTimeout = setTimeout(() => {
+            console.warn('[TMDB Proxy] Таймаут инициализации, повторная попытка...');
+            safeInit();
+        }, 15000);
+        
+        initProxy().finally(() => clearTimeout(initTimeout));
+    }
+
+    // Старт
+    if (document.readyState === 'complete') {
+        safeInit();
+    } else {
+        window.addEventListener('load', safeInit);
+        document.addEventListener('DOMContentLoaded', safeInit);
     }
 })();
