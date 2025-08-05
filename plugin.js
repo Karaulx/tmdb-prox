@@ -4,7 +4,7 @@
     console.log('[TMDB Proxy] Инициализация v5.0');
     
     const CONFIG = {
-        proxyHost: 'https://novomih25.duckdns.org:9091',
+        proxyHost: 'novomih25.duckdns.org:9091',
         credentials: {
             username: 'jackett',
             password: '3p4uh49y'
