@@ -1,141 +1,93 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Инициализация v12.4 [Emergency Fix]');
+    console.log('[TMDB Proxy] Инициализация v12.6 [Manual Verify]');
     
+    // Конфигурация (ЗАМЕНИТЕ значения на свои!)
     const CONFIG = {
-        // Основной прокси (проверьте доступность)
-        proxies: [
-            {
-                url: 'https://novomih25.duckdns.org:9092/3',
-                testPath: '/movie/550'
-            },
-            {
-                url: 'https://api.themoviedb.org/3',
-                testPath: '/configuration',
-                noAuth: true // Не требует авторизации
-            }
-        ],
+        // Основной прокси (должен быть доступен)
+        proxy: 'https://novomih25.duckdns.org:9092/3',
+        // Учётные данные из /etc/nginx/.htpasswd
         credentials: {
-            username: 'jackett',
+            username: 'jackett', 
             password: '3p4uh49y'
         },
-        timeout: 8000,
-        maxRetries: 2
+        // Принудительно использовать этот прокси (true/false)
+        forceProxy: true
     };
 
-    // 1. Улучшенная проверка соединения
-    async function testConnection(proxy, attempt = 1) {
+    // 1. Проверка прокси вручную (раскомментируйте для теста)
+    async function manualProxyCheck() {
+        console.log('[TMDB Proxy] Ручная проверка прокси...');
         try {
-            console.log(`[TMDB Proxy] Проверка ${proxy.url} (${attempt}/${CONFIG.maxRetries})`);
-            
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), CONFIG.timeout);
-            
-            const headers = {};
-            if (!proxy.noAuth) {
-                headers.Authorization = 'Basic ' + btoa(
-                    CONFIG.credentials.username + ':' + CONFIG.credentials.password
-                );
-            }
-            
-            const response = await fetch(proxy.url + proxy.testPath, {
-                signal: controller.signal,
-                headers
+            const testUrl = `${CONFIG.proxy}/movie/550`;
+            const response = await fetch(testUrl, {
+                headers: {
+                    'Authorization': 'Basic ' + btoa(
+                        CONFIG.credentials.username + ':' + CONFIG.credentials.password
+                    )
+                }
             });
             
-            clearTimeout(timeout);
-            return response.ok ? proxy.url : false;
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            console.log('[TMDB Proxy] Прокси работает! Ответ:', data);
+            return true;
         } catch (e) {
-            console.warn(`[TMDB Proxy] Ошибка проверки ${proxy.url}:`, e.message);
-            if (attempt < CONFIG.maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return testConnection(proxy, attempt + 1);
-            }
+            console.error('[TMDB Proxy] Ошибка проверки прокси:', e);
+            alert(`Прокси недоступен! Ошибка: ${e.message}\nПроверьте:\n1. Доступность сервера\n2. Логин/пароль\n3. Порт 9092`);
             return false;
         }
     }
 
-    // 2. Выбор рабочего соединения
-    async function getWorkingConnection() {
-        for (const proxy of CONFIG.proxies) {
-            const result = await testConnection(proxy);
-            if (result) return result;
-        }
-        throw new Error('Все прокси-серверы недоступны');
-    }
-
-    // 3. Обработка запросов
-    function processRequest(req, proxyUrl) {
-        if (/themoviedb\.org/.test(req.url)) {
-            const isImage = req.url.includes('image.tmdb.org');
-            const newUrl = isImage
-                ? req.url.replace(/image\.tmdb\.org/, proxyUrl.replace('/3', ''))
-                : req.url.replace(/api\.themoviedb\.org\/3/, proxyUrl);
-            
-            const headers = { ...req.headers };
-            if (!proxyUrl.includes('themoviedb.org')) {
-                headers.Authorization = 'Basic ' + btoa(
-                    CONFIG.credentials.username + ':' + CONFIG.credentials.password
-                );
-            }
-            
-            return {
-                ...req,
-                url: newUrl,
-                headers
-            };
-        }
-        return req;
-    }
-
-    // 4. Настройка перехватчиков
-    function setupProxy(proxyUrl) {
-        // Для Lampa
+    // 2. Настройка перехватчика
+    function setupProxy() {
+        // Для Lampa 3.x/4.x
         if (window.lampa?.interceptor?.request?.add) {
             lampa.interceptor.request.add({
-                before: req => processRequest(req, proxyUrl),
-                error: err => console.error('[TMDB Proxy] Ошибка:', err)
-            });
-        } 
-        // Глобальный перехват
-        else {
-            const originalFetch = window.fetch;
-            window.fetch = (input, init) => {
-                if (typeof input === 'string' && /themoviedb\.org/.test(input)) {
-                    const processed = processRequest({ url: input, headers: init?.headers }, proxyUrl);
-                    init = { ...init, headers: processed.headers };
-                    input = processed.url;
+                before: req => {
+                    if (/themoviedb\.org/.test(req.url)) {
+                        const newUrl = req.url
+                            .replace(/api\.themoviedb\.org\/3/, CONFIG.proxy)
+                            .replace(/image\.tmdb\.org/, CONFIG.proxy.replace('/3', ''));
+                        
+                        console.log('[TMDB Proxy] Перенаправление:', req.url, '→', newUrl);
+                        
+                        return {
+                            ...req,
+                            url: newUrl,
+                            headers: {
+                                ...req.headers,
+                                'Authorization': 'Basic ' + btoa(
+                                    CONFIG.credentials.username + ':' + CONFIG.credentials.password
+                                )
+                            }
+                        };
+                    }
+                    return req;
                 }
-                return originalFetch(input, init);
-            };
+            });
+            console.log('[TMDB Proxy] Успешно подключен к Lampa!');
+        } else {
+            console.error('[TMDB Proxy] Lampa API не найден!');
         }
-        console.log('[TMDB Proxy] Активное соединение:', proxyUrl);
     }
 
-    // 5. Аварийный режим
-    function emergencyMode() {
-        console.warn('[TMDB Proxy] Активирован аварийный режим');
-        setupProxy('https://api.themoviedb.org/3');
-        alert('Прокси недоступны. Используется прямое подключение к TMDB');
-    }
-
-    // 6. Защищенная инициализация
-    async function safeInit() {
-        try {
-            const workingUrl = await getWorkingConnection();
-            setupProxy(workingUrl);
-        } catch (e) {
-            console.error('[TMDB Proxy] Ошибка:', e);
-            emergencyMode();
+    // 3. Инициализация
+    async function init() {
+        if (CONFIG.forceProxy || await manualProxyCheck()) {
+            setupProxy();
+        } else {
+            console.error('[TMDB Proxy] Прокси не прошёл проверку!');
         }
     }
 
     // Запуск
     if (document.readyState === 'complete') {
-        safeInit();
+        init();
     } else {
-        window.addEventListener('load', safeInit);
-        document.addEventListener('DOMContentLoaded', safeInit);
+        window.addEventListener('load', init);
+        document.addEventListener('DOMContentLoaded', init);
     }
 })();
