@@ -7,7 +7,7 @@
         // Основной прокси
         proxies: [
             {
-                url: 'https://novomih25.duckdns.org:9091',
+                url: 'https://novomih25.duckdns.org:9092',
                 auth: 'Basic ' + btoa('jackett:3p4uh49y')
             },
             // Резервные прокси (добавьте свои)
