@@ -1,0 +1,12 @@
+{
+  "name": "TMDB Proxy Override",
+  "version": "1.0.0",
+  "author": "YourName",
+  "desc": "Полный перехват запросов TMDB через прокси",
+  "repository": "",
+  "plugin_type": "api",
+  "config": {
+    "proxy_url": "https://novomih25.duckdns.org:9092",
+    "api_key": "a68d078b1475b51c18e6d4d0f44600f8"
+  }
+}
