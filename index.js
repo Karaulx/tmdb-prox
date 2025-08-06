@@ -1,40 +1,28 @@
 class TMDBProxyPlugin {
   constructor() {
-    this.name = 'TMDB Proxy Plugin';
-    this.version = '1.0.3';
     this.proxyDomain = 'https://novomih25.duckdns.org:9092';
-    this.originalFunctions = {};
   }
 
   init() {
-    this.saveOriginalFunctions();
-    this.interceptAPIRequests();
-    this.interceptImageRequests();
-    console.log('[TMDB Proxy Plugin] Initialized');
-  }
+    const originalApi = Lampa.TMDB.api;
+    const originalImage = Lampa.TMDB.image;
 
-  saveOriginalFunctions() {
-    this.originalFunctions.tmdbApi = Lampa.TMDB.api;
-    this.originalFunctions.tmdbImage = Lampa.TMDB.image;
-  }
-
-  interceptAPIRequests() {
-    Lampa.TMDB.api = (originalUrl, callback, error) => {
-      // Полностью заменяем URL, а не вкладываем прокси в оригинальный
-      const tmdbPath = originalUrl.replace(/^https?:\/\/api\.themoviedb\.org\/?3?\/?/, '');
-      const proxyUrl = `${this.proxyDomain}/tmdb-api/${tmdbPath.replace(/^\//, '')}`;
+    // Перехват API запросов
+    Lampa.TMDB.api = (url, callback, error) => {
+      const cleanUrl = url.toString()
+        .replace('https://api.themoviedb.org/3', '')
+        .replace(/^https?:\/\/[^\/]+/, '');
       
-      console.log(`[TMDB Proxy] Transforming: ${originalUrl} -> ${proxyUrl}`);
+      const proxyUrl = `${this.proxyDomain}/tmdb-api${cleanUrl}`;
+      console.log('[TMDB Proxy] Proxying:', url, '→', proxyUrl);
       
-      return this.originalFunctions.tmdbApi(proxyUrl, callback, error);
+      return originalApi(proxyUrl, callback, error);
     };
-  }
 
-  interceptImageRequests() {
-    Lampa.TMDB.image = (path, params = {}) => {
+    // Перехват запросов изображений
+    Lampa.TMDB.image = (path, params) => {
       if (!path) return '';
-      const proxyPath = `${this.proxyDomain}/tmdb-image${path}`;
-      return this.originalFunctions.tmdbImage(proxyPath, params);
+      return originalImage(`${this.proxyDomain}/tmdb-image${path}`, params);
     };
   }
 }
