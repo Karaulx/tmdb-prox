@@ -1,29 +1,29 @@
 (function() {
     'use strict';
     
-    console.log('[TMDB Proxy] Плагин v12.7 [Full Fix]');
+    console.log('[TMDB Proxy] Плагин v12.8 [Stable]');
     
-    // Конфигурация (ЗАМЕНИТЕ НА СВОИ!)
+    // Конфигурация (ОБЯЗАТЕЛЬНО ЗАМЕНИТЕ НА СВОИ!)
     const CONFIG = {
         proxy: 'https://novomih25.duckdns.org:9092/3',
         imageProxy: 'https://novomih25.duckdns.org:9092',
         credentials: {
-            username: 'jackett',
-            password: '3p4uh49y'
+            username: 'jackett', 
+            password: '3p4uh49y' // Должен совпадать с /etc/nginx/.htpasswd
         },
-        forceProxy: true
+        forceProxy: true // Пропустить проверки
     };
 
-    // 1. Перехватчик для XMLHttpRequest (API запросы)
+    // 1. Перехватчик для XMLHttpRequest (основной)
     const originalXHR = window.XMLHttpRequest;
     window.XMLHttpRequest = class extends originalXHR {
         open(method, url) {
             if (/themoviedb\.org/.test(url)) {
                 const newUrl = url
                     .replace(/https?:\/\/api\.themoviedb\.org\/3/, CONFIG.proxy)
-                    .replace(/([?&])api_key=[^&]+&?/, '$1');
+                    .replace(/https?:\/\/image\.tmdb\.org/, CONFIG.imageProxy);
                 
-                console.log('[TMDB Proxy] API:', url, '→', newUrl);
+                console.log('[TMDB Proxy] Перенаправление:', url, '→', newUrl);
                 super.open(method, newUrl);
                 this.setRequestHeader('Authorization', 'Basic ' + btoa(
                     CONFIG.credentials.username + ':' + CONFIG.credentials.password
@@ -34,7 +34,7 @@
         }
     };
 
-    // 2. Перехватчик для fetch (если Lampa использует его)
+    // 2. Перехватчик для fetch (на случай, если Lampa использует его)
     const originalFetch = window.fetch;
     window.fetch = async (url, options) => {
         if (/themoviedb\.org/.test(url)) {
@@ -42,7 +42,7 @@
                 .replace(/https?:\/\/api\.themoviedb\.org\/3/, CONFIG.proxy)
                 .replace(/https?:\/\/image\.tmdb\.org/, CONFIG.imageProxy);
             
-            console.log('[TMDB Proxy] Fetch:', url, '→', newUrl);
+            console.log('[TMDB Proxy] Перехват fetch:', newUrl);
             return originalFetch(newUrl, {
                 ...options,
                 headers: {
@@ -56,7 +56,7 @@
         return originalFetch(url, options);
     };
 
-    // 3. Перехватчик для изображений
+    // 3. Перехватчик для динамических изображений
     const originalCreateElement = document.createElement;
     document.createElement = function(tag) {
         const el = originalCreateElement.apply(this, arguments);
@@ -69,7 +69,7 @@
                             'https://image.tmdb.org', 
                             CONFIG.imageProxy
                         );
-                        console.log('[TMDB Proxy] Изображение:', newUrl);
+                        console.log('[TMDB Proxy] Замена изображения:', newUrl);
                         originalSrc.set.call(this, newUrl);
                     } else {
                         originalSrc.set.call(this, value);
@@ -83,35 +83,11 @@
         return el;
     };
 
-    // 4. Проверка прокси при загрузке
-    async function testProxy() {
-        try {
-            const test = await fetch(`${CONFIG.proxy}/movie/550`, {
-                headers: {
-                    'Authorization': 'Basic ' + btoa(
-                        CONFIG.credentials.username + ':' + CONFIG.credentials.password
-                    )
-                }
-            });
-            if (!test.ok) throw new Error('HTTP ' + test.status);
-            console.log('[TMDB Proxy] Тест успешен!');
-        } catch (e) {
-            console.error('[TMDB Proxy] Ошибка:', e);
-            alert('Прокси недоступен! Проверьте:\n1. Сервер\n2. Логин/пароль\n3. Порт 9092');
-        }
-    }
-
-    // Запуск
-    if (CONFIG.forceProxy) {
-        console.log('[TMDB Proxy] Принудительное включение');
-        setupProxy();
-    } else {
-        testProxy().then(setupProxy);
-    }
-
-    function setupProxy() {
-        console.log('[TMDB Proxy] Активирован!');
-        // Для Lampa 4.x+
+    // 4. Инициализация
+    function init() {
+        console.log('[TMDB Proxy] Успешно активирован!');
+        
+        // Для Lampa 4.x+ (если доступен interceptor)
         if (window.lampa?.interceptor?.request?.add) {
             lampa.interceptor.request.add({
                 before: req => {
@@ -135,5 +111,12 @@
                 }
             });
         }
+    }
+
+    // Автозапуск
+    if (document.readyState === 'complete') {
+        init();
+    } else {
+        window.addEventListener('load', init);
     }
 })();
