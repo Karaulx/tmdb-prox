@@ -1,59 +1,64 @@
-class TMDBProxyOverride {
+class TMDBProxyPlugin {
   constructor(config) {
-    this.config = config;
-    this.proxy_url = config.proxy_url;
-    this.api_key = config.api_key;
+    this.config = config || {};
+    this.proxy_url = this.config.proxy_url || "https://novomih25.duckdns.org:9092";
+    this.api_key = this.config.api_key || "a68d078b1475b51c18e6d4d0f44600f8";
 
-    // Перехват всех fetch-запросов
+    // Перехватываем все запросы Lampa
     this.hijackFetch();
-    
-    // Перехват изображений
-    this.overrideImagePaths();
+    this.hijackXHR();
+    this.overrideImageUrls();
   }
 
+  // Перехват fetch-запросов
   hijackFetch() {
     const originalFetch = window.fetch;
-    
     window.fetch = async (url, options) => {
-      // Перехват API TMDB
-      if (typeof url === 'string' && url.includes('api.themoviedb.org/3')) {
-        const newUrl = url
-          .replace('https://api.themoviedb.org/3/', `${this.proxy_url}/3/`)
-          .replace(/(\?|&)api_key=[^&]*/, '') // Удаляем старый ключ
-          + (url.includes('?') ? '&' : '?' + `api_key=${this.api_key}`;
-        
-        return originalFetch(newUrl, options);
-      }
-      
-      return originalFetch(url, options);
+      const modifiedUrl = this.modifyRequestUrl(url);
+      return originalFetch(modifiedUrl, options);
     };
+  }
 
-    // Для XMLHttpRequest (если Lampa использует его)
+  // Перехват XMLHttpRequest (если Lampa использует его)
+  hijackXHR() {
     const originalXHR = window.XMLHttpRequest;
-    
     window.XMLHttpRequest = class extends originalXHR {
-      open(method, url) {
-        if (url.includes('api.themoviedb.org/3')) {
-          const newUrl = url
-            .replace('https://api.themoviedb.org/3/', `${this.proxy_url}/3/`)
-            .replace(/(\?|&)api_key=[^&]*/, '')
-            + (url.includes('?') ? '&' : '?' + `api_key=${this.api_key}`);
-          
-          super.open(method, newUrl);
-        } else {
-          super.open(method, url);
-        }
+      open(method, url, async) {
+        const modifiedUrl = this.modifyRequestUrl(url);
+        super.open(method, modifiedUrl, async);
       }
     };
   }
 
-  overrideImagePaths() {
-    // Перехват URL изображений TMDB
-    if (window.tmdb) {
+  // Модификация URL перед отправкой
+  modifyRequestUrl(url) {
+    if (typeof url !== 'string') return url;
+
+    // Если запрос к старому прокси (karaulx.github.io)
+    if (url.includes('karaulx.github.io/tmdb-prox')) {
+      return url.replace(
+        'https://karaulx.github.io/tmdb-prox/',
+        `${this.proxy_url}/3/`
+      ) + `?api_key=${this.api_key}`;
+    }
+
+    // Если запрос к TMDB API
+    if (url.includes('api.themoviedb.org/3')) {
+      return url.replace(
+        'https://api.themoviedb.org/3/',
+        `${this.proxy_url}/3/`
+      ) + (url.includes('?') ? '&' : '?') + `api_key=${this.api_key}`;
+    }
+
+    return url;
+  }
+
+  // Переопределение URL изображений TMDB
+  overrideImageUrls() {
+    if (window.tmdb?.imageUrl) {
       const originalImageUrl = window.tmdb.imageUrl;
-      
       window.tmdb.imageUrl = (path, size = 'original') => {
-        if (path.startsWith('http')) return path; // Уже проксированный URL
+        if (path.startsWith('http')) return path;
         return `${this.proxy_url}/t/p/${size}${path}`;
       };
     }
@@ -63,5 +68,5 @@ class TMDBProxyOverride {
 // Инициализация плагина
 lampa.plugins.register({
   name: 'tmdb-proxy-override',
-  init: (config) => new TMDBProxyOverride(config),
+  init: (config) => new TMDBProxyPlugin(config),
 });
