@@ -1,6 +1,6 @@
 (function() {
     // Конфигурация
-    const PROXY_URL = "https://tmdb-prox.pages.dev";
+    const PROXY_URL = "https://tmdb-prox.pages.dev/index.js";
     const API_KEY = "a68d078b1475b51c18e6d4d0f44600f8";
 
     // 1. Перехватываем стандартные URL Lampa
