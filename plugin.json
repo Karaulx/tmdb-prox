@@ -2,7 +2,7 @@
   "name": "TMDB Proxy Override",
   "version": "1.0.0",
   "author": "YourName",
-  "desc": "Полный перехват запросов TMDB через прокси",
+  "desc": "Полный перехват запросов TMDB без Nginx",
   "repository": "",
   "plugin_type": "api",
   "config": {
