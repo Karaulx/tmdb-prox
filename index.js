@@ -1,81 +1,52 @@
-class TMDBUltimateProxy {
-  constructor(config) {
-    // Конфиг
-    this.proxy = config.proxy_url;
-    this.key = config.api_key;
+(function() {
+    // Конфигурация прокси
+    const TMDB_API_URL = "https://api.themoviedb.org/3/";
+    const TMDB_IMAGE_URL = "https://image.tmdb.org/t/p/";
+    const API_KEY = "a68d078b1475b51c18e6d4d0f44600f8"; // Ваш API-ключ
 
-    // Агрессивный перехват
-    this.hijackFetch();
-    this.hijackXHR();
-    this.overrideLampaCore();
-    this.patchImageLoader();
+    // 1. Перехват всех запросов Lampa к TMDB API
+    if (window.tmdb?.native?.url) {
+        window.tmdb.native.url = "https://tmdb-prox.pages.dev/api/";
+    }
 
-    console.log("TMDB Ultimate Proxy активирован!");
-  }
-
-  // 1. Перехватываем fetch
-  hijackFetch() {
+    // 2. Перехват fetch-запросов
     const originalFetch = window.fetch;
-    window.fetch = (url, opts) => {
-      return originalFetch(this.fixUrl(url), opts);
+    window.fetch = async (url, options) => {
+        if (typeof url === 'string') {
+            // Перенаправляем запросы API через прокси
+            if (url.includes('api.themoviedb.org/3')) {
+                const path = url.split('api.themoviedb.org/3/')[1];
+                url = `https://tmdb-prox.pages.dev/api/${path}?api_key=${API_KEY}`;
+            }
+            // Перенаправляем запросы изображений
+            else if (url.includes('image.tmdb.org/t/p/')) {
+                const path = url.split('image.tmdb.org/t/p/')[1];
+                url = `https://tmdb-prox.pages.dev/images/${path}`;
+            }
+        }
+        return originalFetch(url, options);
     };
-  }
 
-  // 2. Перехватываем XMLHttpRequest
-  hijackXHR() {
+    // 3. Перехват XMLHttpRequest (если Lampa использует его)
     const originalXHR = window.XMLHttpRequest;
     window.XMLHttpRequest = class extends originalXHR {
-      open(method, url) {
-        super.open(method, this.fixUrl(url));
-      }
+        open(method, url) {
+            if (url.includes('api.themoviedb.org/3')) {
+                const path = url.split('api.themoviedb.org/3/')[1];
+                url = `https://tmdb-prox.pages.dev/api/${path}?api_key=${API_KEY}`;
+            }
+            super.open(method, url);
+        }
     };
-  }
 
-  // 3. Исправляем URL
-  fixUrl(url) {
-    if (typeof url !== 'string') return url;
-
-    // Специальный фикс для karaulx.github.io
-    if (url.includes('karaulx.github.io/tmdb-prox')) {
-      const path = url.split('tmdb-prox/')[1] || '';
-      return `${this.proxy}/3/${path}?api_key=${this.key}`;
-    }
-
-    // Обычные запросы TMDB
-    if (url.includes('api.themoviedb.org')) {
-      return url.replace(
-        'https://api.themoviedb.org/3/',
-        `${this.proxy}/3/?api_key=${this.key}&`
-      );
-    }
-
-    return url;
-  }
-
-  // 4. Переопределяем ядро Lampa
-  overrideLampaCore() {
-    if (window.tmdb?.request) {
-      const original = tmdb.request;
-      tmdb.request = (url) => {
-        return original(this.fixUrl(url));
-      };
-    }
-  }
-
-  // 5. Исправляем загрузку изображений
-  patchImageLoader() {
+    // 4. Исправляем URL изображений в Lampa
     if (window.tmdb?.imageUrl) {
-      const original = tmdb.imageUrl;
-      tmdb.imageUrl = (path, size = 'original') => {
-        if (path.startsWith('http')) return path;
-        return `${this.proxy}/t/p/${size}${path}`;
-      };
+        const originalImageUrl = window.tmdb.imageUrl;
+        window.tmdb.imageUrl = (path, size = 'original') => {
+            if (path.startsWith('http')) return path;
+            return `https://tmdb-prox.pages.dev/images/${size}${path}`;
+        };
     }
-  }
-}
 
-// Автозапуск
-lampa.plugins.register({
-  name: 'tmdb-ultimate-proxy',
-  init: (config) => new TMDBUltimateProxy(config)
-});
+    console.log("[TMDB PROXY] Все запросы перенаправлены на tmdb-prox.pages.dev");
+})();
