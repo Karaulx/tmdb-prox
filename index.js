@@ -16,68 +16,50 @@ class TMDBProxyPlugin {
     this.originalTmdbApi = Lampa.TMDB?.api;
     this.originalTmdbImage = Lampa.TMDB?.image;
 
-    // Перехватываем основной Request метод
+    // Полностью перехватываем Request
     Lampa.Request = (url, params) => {
       if (typeof url === 'string') {
-        // Полностью заменяем URL на прокси для TMDB API
-        if (url.includes('api.themoviedb.org')) {
-          const cleanUrl = this.cleanApiUrl(url);
-          const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+        // Полная замена URL для API запросов
+        if (url.includes('api.themoviedb.org/3/')) {
+          const path = url.split('api.themoviedb.org/3/')[1];
+          const proxyUrl = `${this.apiProxy}/${path}`;
           console.log('[TMDB Proxy] Rewriting API URL:', url, '→', proxyUrl);
-          url = proxyUrl;
+          return this.originalRequest(proxyUrl, params);
         }
-        // Полностью заменяем URL на прокси для изображений
+        // Полная замена URL для изображений
         else if (url.includes('image.tmdb.org')) {
-          const cleanPath = this.cleanImageUrl(url);
-          const proxyUrl = `${this.imageProxy}/${cleanPath}`;
+          const path = url.split('image.tmdb.org/')[1];
+          const proxyUrl = `${this.imageProxy}/${path}`;
           console.log('[TMDB Proxy] Rewriting Image URL:', url, '→', proxyUrl);
-          url = proxyUrl;
+          return this.originalRequest(proxyUrl, params);
         }
       }
       return this.originalRequest(url, params);
     };
 
-    // Перехватываем TMDB API если используется
+    // Перехватываем TMDB API
     if (Lampa.TMDB?.api) {
       Lampa.TMDB.api = (url, callback, error) => {
-        const cleanUrl = this.cleanApiUrl(url);
-        const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+        const path = url.includes('api.themoviedb.org/3/') ? 
+                   url.split('api.themoviedb.org/3/')[1] : url;
+        const proxyUrl = `${this.apiProxy}/${path}`;
         console.log('[TMDB Proxy] Rewriting TMDB.api URL:', url, '→', proxyUrl);
         return this.originalTmdbApi(proxyUrl, callback, error);
       };
     }
 
-    // Перехватываем TMDB Image если используется
+    // Перехватываем TMDB Image
     if (Lampa.TMDB?.image) {
       Lampa.TMDB.image = (path, params) => {
         if (!path) return '';
-        const cleanPath = this.cleanImageUrl(path);
+        const cleanPath = path.startsWith('/') ? path.substring(1) : path;
         const proxyUrl = `${this.imageProxy}/${cleanPath}`;
-        console.log('[TMDB Proxy] Rewriting TMDB.image URL:', path, '→', proxyUrl);
+        console.log('[TMDB Proxy] Rewriting TMDB.image:', path, '→', proxyUrl);
         return this.originalTmdbImage(proxyUrl, params);
       };
     }
 
     console.log('[TMDB Proxy] Plugin successfully initialized');
-  }
-
-  cleanApiUrl(url) {
-    // Удаляем протокол, домен и версию API
-    let cleaned = url.replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
-                    .replace(/^https?:\/\/[^\/]+\//, '')
-                    .replace(/^\/+/, '');
-    
-    // Удаляем параметр api_key если он есть
-    cleaned = cleaned.replace(/(\?|&)api_key=[^&]*/, '');
-    
-    return cleaned;
-  }
-
-  cleanImageUrl(url) {
-    // Удаляем протокол и домен
-    return url.replace(/^https?:\/\/image\.tmdb\.org\//, '')
-             .replace(/^https?:\/\/[^\/]+\//, '')
-             .replace(/^\/+/, '');
   }
 }
 
