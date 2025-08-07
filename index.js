@@ -1,35 +1,85 @@
-(function() {
-    const API_KEY = 'a68d078b1475b51c18e6d4d0f44600f8'; // TMDB API key (v3)
-    const PROXY_API = 'https://novomih25.duckdns.org:9092/tmdb-api';
-    const PROXY_IMG = 'https://novomih25.duckdns.org:9092/tmdb-image';
+class TMDBProxyPlugin {
+  constructor() {
+    this.apiProxy = 'https://novomih25.duckdns.org:9092/tmdb-api';
+    this.imageProxy = 'https://novomih25.duckdns.org:9092/tmdb-image';
+    this.init();
+  }
 
-    const originalFetch = window.fetch;
+  init() {
+    if (!window.Lampa) {
+      console.error('[TMDB Proxy] Lampa not found!');
+      return setTimeout(() => this.init(), 500);
+    }
 
-    window.fetch = function(input, init = {}) {
-        try {
-            let url = typeof input === 'string' ? input : input.url;
+    // Сохраняем оригинальные методы
+    this.originalRequest = Lampa.Request;
+    this.originalTmdbApi = Lampa.TMDB?.api;
+    this.originalTmdbImage = Lampa.TMDB?.image;
 
-            // Заменяем api.themoviedb.org
-            if (url.includes('api.themoviedb.org')) {
-                url = url.replace('https://api.themoviedb.org/3', PROXY_API);
-                if (!url.includes('api_key=')) {
-                    url += (url.includes('?') ? '&' : '?') + 'api_key=' + API_KEY;
-                }
-                input = url;
-            }
-
-            // Заменяем image.tmdb.org
-            if (url.includes('image.tmdb.org')) {
-                url = url.replace('https://image.tmdb.org', PROXY_IMG);
-                input = url;
-            }
-
-        } catch (e) {
-            console.error('[TMDB PROXY ERROR]', e);
+    // Перехватываем основной Request метод
+    Lampa.Request = (url, params) => {
+      if (typeof url === 'string') {
+        // Обработка API запросов
+        if (url.includes('api.themoviedb.org')) {
+          const cleanUrl = this.cleanApiUrl(url);
+          const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+          console.log('[TMDB Proxy] API:', url, '→', proxyUrl);
+          return this.originalRequest(proxyUrl, params);
         }
-
-        return originalFetch.call(this, input, init);
+        // Обработка изображений
+        else if (url.includes('image.tmdb.org')) {
+          const cleanPath = this.cleanImageUrl(url);
+          const proxyUrl = `${this.imageProxy}/${cleanPath}`;
+          console.log('[TMDB Proxy] Image:', url, '→', proxyUrl);
+          return this.originalRequest(proxyUrl, params);
+        }
+      }
+      return this.originalRequest(url, params);
     };
 
-    console.log('%cTMDB прокси активирован через Nginx', 'color: #00aaff');
-})();
+    // Перехватываем TMDB API если используется
+    if (Lampa.TMDB?.api) {
+      Lampa.TMDB.api = (url, callback, error) => {
+        const cleanUrl = this.cleanApiUrl(url);
+        const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+        console.log('[TMDB Proxy] TMDB.api:', url, '→', proxyUrl);
+        return this.originalTmdbApi(proxyUrl, callback, error);
+      };
+    }
+
+    // Перехватываем TMDB Image если используется
+    if (Lampa.TMDB?.image) {
+      Lampa.TMDB.image = (path, params) => {
+        if (!path) return '';
+        const cleanPath = this.cleanImageUrl(path);
+        const proxyUrl = `${this.imageProxy}/${cleanPath}`;
+        console.log('[TMDB Proxy] TMDB.image:', path, '→', proxyUrl);
+        return this.originalTmdbImage(proxyUrl, params);
+      };
+    }
+
+    console.log('[TMDB Proxy] Plugin fully initialized');
+  }
+
+  cleanApiUrl(url) {
+    // Удаляем протокол, домен и версию API
+    let cleaned = url.replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
+                    .replace(/^https?:\/\/[^\/]+\//, '')
+                    .replace(/^\/+/, '');
+    
+    // Удаляем параметр api_key если он есть
+    cleaned = cleaned.replace(/(\?|&)api_key=[^&]*/, '');
+    
+    return cleaned;
+  }
+
+  cleanImageUrl(url) {
+    // Удаляем протокол и домен
+    return url.replace(/^https?:\/\/image\.tmdb\.org\//, '')
+             .replace(/^https?:\/\/[^\/]+\//, '')
+             .replace(/^\/+/, '');
+  }
+}
+
+// Автозагрузка
+new TMDBProxyPlugin();
