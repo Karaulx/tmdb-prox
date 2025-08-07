@@ -1,32 +1,32 @@
 class TMDBProxyPlugin {
   constructor() {
-    this.proxyDomain = 'https://novomih25.duckdns.org:9092/tmdb-api';
+    this.proxyBase = 'https://novomih25.duckdns.org:9092/tmdb-api';
     this.originalFunctions = {};
     this.init();
   }
 
   init() {
     if (!window.Lampa?.TMDB) {
-      console.error('[TMDB Proxy] Lampa or TMDB object not found!');
+      console.error('[TMDB Proxy] Lampa not found!');
       return;
     }
 
+    // Сохраняем оригинальные методы
     this.originalFunctions.tmdbApi = Lampa.TMDB.api;
     this.originalFunctions.tmdbImage = Lampa.TMDB.image;
 
+    // Перехватываем API-запросы
     Lampa.TMDB.api = (url, callback, error) => {
       try {
-        // Извлекаем путь после /3/ или просто путь
-        let apiPath = String(url).replace(/^https?:\/\/api\.themoviedb\.org(\/3)?\//, '');
+        // Нормализуем URL (удаляем старый домен и API-ключ)
+        let cleanPath = String(url)
+          .replace(/^https?:\/\/api\.themoviedb\.org\/?3?\//, '')
+          .replace(/(\?|&)api_key=[^&]*/, '');
         
-        // Удаляем существующий api_key если есть
-        apiPath = apiPath.replace(/(\?|&)api_key=[^&]*/, '');
+        // Формируем новый URL с прокси
+        const proxyUrl = `${this.proxyBase}/${cleanPath}`;
         
-        // Формируем новый URL без дублирования доменов
-        const proxyUrl = `${this.proxyDomain}/${apiPath}`;
-        
-        console.log('[TMDB Proxy] Transformed URL:', {original: url, proxied: proxyUrl});
-        
+        console.debug('[TMDB Proxy] Transformed:', url, '→', proxyUrl);
         return this.originalFunctions.tmdbApi(proxyUrl, callback, error);
       } catch (e) {
         console.error('[TMDB Proxy] Error:', e);
@@ -34,10 +34,12 @@ class TMDBProxyPlugin {
       }
     };
 
+    // Перехватываем запросы изображений
     Lampa.TMDB.image = (path, params) => {
       if (!path) return '';
+      const cleanPath = String(path).replace(/^https?:\/\/image\.tmdb\.org\//, '');
       return this.originalFunctions.tmdbImage(
-        `https://novomih25.duckdns.org:9092/tmdb-image/${path.replace(/^https?:\/\/image\.tmdb\.org\//, '')}`,
+        `https://novomih25.duckdns.org:9092/tmdb-image/${cleanPath}`,
         params
       );
     };
@@ -46,7 +48,7 @@ class TMDBProxyPlugin {
   }
 }
 
-// Инициализация после загрузки Lampa
+// Автоматическая инициализация
 if (window.Lampa) {
   new TMDBProxyPlugin();
 } else {
