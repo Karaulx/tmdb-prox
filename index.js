@@ -20,7 +20,7 @@ class TMDBProxyPlugin {
           const cleanUrl = url
             .replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
             .replace(/(\?|&)api_key=[^&]*/, '');
-          const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+          const proxyUrl = `${this.apiProxy}/${cleanUrl.replace(/^https?:\/\//, '')}`;
           console.log('[TMDB Proxy] API:', url, '→', proxyUrl);
           return this.originalRequest(proxyUrl, params);
         }
@@ -29,7 +29,7 @@ class TMDBProxyPlugin {
           const cleanPath = url
             .replace(/^https?:\/\/image\.tmdb\.org\//, '')
             .replace(/^\/?/, '');
-          const proxyUrl = `${this.imageProxy}/${cleanPath}`;
+          const proxyUrl = `${this.imageProxy}/${cleanPath.replace(/^https?:\/\//, '')}`;
           console.log('[TMDB Proxy] Image:', url, '→', proxyUrl);
           return this.originalRequest(proxyUrl, params);
         }
@@ -44,7 +44,7 @@ class TMDBProxyPlugin {
         const cleanUrl = String(url)
           .replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
           .replace(/(\?|&)api_key=[^&]*/, '');
-        const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+        const proxyUrl = `${this.apiProxy}/${cleanUrl.replace(/^https?:\/\//, '')}`;
         console.log('[TMDB Proxy] TMDB.api:', url, '→', proxyUrl);
         return this.originalTmdbApi(proxyUrl, callback, error);
       };
@@ -58,7 +58,7 @@ class TMDBProxyPlugin {
         const cleanPath = String(path)
           .replace(/^https?:\/\/image\.tmdb\.org\//, '')
           .replace(/^\/?/, '');
-        const proxyUrl = `${this.imageProxy}/${cleanPath}`;
+        const proxyUrl = `${this.imageProxy}/${cleanPath.replace(/^https?:\/\//, '')}`;
         console.log('[TMDB Proxy] TMDB.image:', path, '→', proxyUrl);
         return this.originalTmdbImage(proxyUrl, params);
       };
