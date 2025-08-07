@@ -1,108 +1,77 @@
 (function() {
     'use strict';
-
-    // 1. Ждем загрузки Lampa
-    const waitForLampa = setInterval(() => {
-        if (!window.Lampa || !Lampa.Storage) return;
-
-        clearInterval(waitForLampa);
-        
-        // 2. Создаем изолированную Jackett-интеграцию
-        const JackettManager = {
-            config: {
-                server: Lampa.Storage.get('jackett_server') || 'http://novomih25.duckdns.org',
-                apiKey: Lampa.Storage.get('jackett_apikey') || ''
-            },
-
-            // 3. Безопасный fetch-враппер только для Jackett
-            safeFetch: async function(url, options) {
-                try {
-                    const response = await fetch(url, {
-                        ...options,
-                        mode: 'cors',
-                        headers: {
-                            'Accept': 'application/json',
-                            ...(options?.headers || {})
-                        }
-                    });
-                    return await response.json();
-                } catch (e) {
-                    console.error('[Jackett Fetch Error]', e);
-                    return { error: true, message: e.message };
+    
+    // ================= CORS FIXER =================
+    const fixUrl = url => url.replace(/([^:]\/)\/+/g, '$1');
+    
+    // Сохраняем оригинальные методы
+    window._originalFetch = window.fetch;
+    window._originalXHROpen = XMLHttpRequest.prototype.open;
+    
+    // Перехватчик fetch
+    window.fetch = async function(input, init) {
+        try {
+            input = typeof input === 'string' ? fixUrl(input) : input;
+            return await window._originalFetch(input, {
+                ...init,
+                mode: 'no-cors',
+                headers: {
+                    ...(init?.headers || {}),
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
-            },
-
-            // 4. Поиск через Jackett API
-            search: function(params) {
-                if (!this.config.apiKey) {
-                    console.warn('Jackett API key not set');
-                    return Promise.reject('API key required');
-                }
-
-                const url = new URL(`${this.config.server}/api/v2.0/indexers/all/results`);
-                url.searchParams.append('apikey', this.config.apiKey);
-
-                Object.keys(params).forEach(key => {
-                    if (Array.isArray(params[key])) {
-                        params[key].forEach(val => url.searchParams.append(`${key}[]`, val));
-                    } else {
-                        url.searchParams.append(key, params[key]);
-                    }
-                });
-
-                return this.safeFetch(url.toString());
-            }
-        };
-
-        // 5. Аккуратно интегрируем в Lampa без перезаписи
-        if (!Lampa.Jackett) {
-            Lampa.Jackett = JackettManager;
-            console.log('[Lampa Jackett] Integration loaded safely');
-        }
-
-        // 6. Добавляем настройки в интерфейс (опционально)
-        if (Lampa.Settings) {
-            Lampa.Settings.listener.follow('open', () => {
-                setTimeout(() => {
-                    if (!document.querySelector('.jackett-settings')) {
-                        const html = `
-                            <div class="jackett-settings">
-                                <div class="settings-param">
-                                    <div class="settings-param__name">Jackett Server</div>
-                                    <input type="text" value="${JackettManager.config.server}" 
-                                        class="settings-param__input" data-key="jackett_server">
-                                </div>
-                                <div class="settings-param">
-                                    <div class="settings-param__name">API Key</div>
-                                    <input type="text" value="${JackettManager.config.apiKey}" 
-                                        class="settings-param__input" data-key="jackett_apikey">
-                                </div>
-                            </div>
-                        `;
-                        
-                        const container = document.querySelector('.settings-params');
-                        if (container) {
-                            container.insertAdjacentHTML('beforeend', html);
-                            
-                            // Обработчик изменений
-                            container.querySelectorAll('[data-key]').forEach(input => {
-                                input.addEventListener('change', (e) => {
-                                    const key = e.target.dataset.key;
-                                    JackettManager.config[key] = e.target.value;
-                                    Lampa.Storage.set(key, e.target.value);
-                                });
-                            });
-                        }
-                    }
-                }, 300);
             });
+        } catch (error) {
+            console.error('[Fetch Error]', error);
+            throw error;
         }
-    }, 500);
-
-    // 7. Чистая инициализация без побочных эффектов
-    if (document.readyState === 'complete') {
-        clearInterval(waitForLampa);
-    } else {
-        window.addEventListener('load', () => clearInterval(waitForLampa));
+    };
+    
+    // Перехватчик XMLHttpRequest
+    XMLHttpRequest.prototype.open = function() {
+        if (arguments[1]) {
+            arguments[1] = fixUrl(arguments[1]);
+        }
+        this.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+        return window._originalXHROpen.apply(this, arguments);
+    };
+    
+    // ================= JACKETT INTEGRATION =================
+    const JACKETT_CONFIG = {
+        server: 'http://novomih25.duckdns.org',
+        apiKey: '4ua9hdxh6mn6oxuim9qgwzlcw0g8btbk',
+        timeout: 10000
+    };
+    
+    Lampa.Jackett = {
+        search: function(params) {
+            const url = new URL(`${JACKETT_CONFIG.server}/api/v2.0/indexers/all/results`);
+            
+            // Базовые параметры
+            url.searchParams.append('apikey', JACKETT_CONFIG.apiKey);
+            
+            // Добавляем пользовательские параметры
+            Object.keys(params).forEach(key => {
+                if (Array.isArray(params[key])) {
+                    params[key].forEach(val => url.searchParams.append(`${key}[]`, val));
+                } else {
+                    url.searchParams.append(key, params[key]);
+                }
+            });
+            
+            return fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            }).then(r => r.json());
+        }
+    };
+    
+    // Автоматическая интеграция с Lampa
+    if (Lampa.Storage) {
+        Lampa.Storage.set('jackett_server', JACKETT_CONFIG.server);
+        Lampa.Storage.set('jackett_apikey', JACKETT_CONFIG.apiKey);
     }
+    
+    console.log('[Lampa Mod] Jackett+CORS fixer activated');
 })();
