@@ -38,7 +38,7 @@ class TMDBProxyPlugin {
   }
 
   getProxyUrl(url) {
-    // Очищаем URL от оригинального домена и параметров api_key
+    // Полностью очищаем URL от оригинального домена
     let cleanUrl = String(url)
       .replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
       .replace(/^https?:\/\/[^\/]+\//, '')
@@ -46,10 +46,15 @@ class TMDBProxyPlugin {
       .replace(/^\/+/, '');
 
     // Удаляем возможные дублирующиеся параметры
-    cleanUrl = cleanUrl.replace(/(&language=[^&]*)+/, '$1');
+    cleanUrl = cleanUrl.replace(/([?&])language=[^&]*(&|$)/, '$1');
 
     // Формируем конечный URL
-    return `${this.apiProxy}/${cleanUrl}`;
+    const proxyUrl = `${this.apiProxy}/${cleanUrl}`;
+    
+    // Добавляем параметр language=ru, если его нет
+    return proxyUrl.includes('?') ? 
+      `${proxyUrl}&language=ru` : 
+      `${proxyUrl}?language=ru`;
   }
 }
 
