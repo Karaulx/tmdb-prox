@@ -44,25 +44,14 @@ class TMDBProxyPlugin {
       };
     }
 
-    // 3. Перехватываем TMDB Image если используется
-    if (Lampa.TMDB?.image) {
-      this.originalTmdbImage = Lampa.TMDB.image;
-      Lampa.TMDB.image = (path, params) => {
-        if (!path) return '';
-        const cleanPath = this.cleanImageUrl(path);
-        const proxyUrl = `${this.imageProxy}/${cleanPath}`;
-        console.log('[TMDB Proxy] TMDB.image:', path, '→', proxyUrl);
-        return this.originalTmdbImage(proxyUrl, params);
-      };
-    }
-
     console.log('[TMDB Proxy] Plugin fully initialized');
   }
 
   cleanApiUrl(url) {
+    // Полностью удаляем домен и протокол, оставляя только путь
     return String(url)
       .replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
-      .replace(/^https?:\/\/[^\/]+\//, '') // Дополнительная очистка на случай уже проксированных URL
+      .replace(/^https?:\/\/[^\/]+\//, '') // Дополнительная очистка
       .replace(/(\?|&)api_key=[^&]*/, '')
       .replace(/^\/+/, '');
   }
