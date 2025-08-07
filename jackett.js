@@ -1,36 +1,46 @@
 (function() {
     'use strict';
 
-    // Сохраняем оригинальные методы
-    const originalFetch = window.fetch;
-    const originalXHROpen = XMLHttpRequest.prototype.open;
+    // 1. Ждем загрузки Lampa
+    const waitForLampa = setInterval(() => {
+        if (!window.Lampa || !Lampa.Storage) return;
 
-    // ================= JACKETT INTEGRATION =================
-    function setupJackettIntegration() {
-        // Проверяем наличие объекта Lampa
-        if (!window.Lampa || !Lampa.Storage) {
-            console.warn('Lampa object not found, retrying in 1 second...');
-            setTimeout(setupJackettIntegration, 1000);
-            return;
-        }
-
-        Lampa.Jackett = {
-            getConfig: function() {
-                return {
-                    server: Lampa.Storage.get('jackett_server') || 'http://novomih25.duckdns.org',
-                    apiKey: Lampa.Storage.get('jackett_apikey') || '',
-                    timeout: 10000
-                };
+        clearInterval(waitForLampa);
+        
+        // 2. Создаем изолированную Jackett-интеграцию
+        const JackettManager = {
+            config: {
+                server: Lampa.Storage.get('jackett_server') || 'http://novomih25.duckdns.org',
+                apiKey: Lampa.Storage.get('jackett_apikey') || ''
             },
-            
+
+            // 3. Безопасный fetch-враппер только для Jackett
+            safeFetch: async function(url, options) {
+                try {
+                    const response = await fetch(url, {
+                        ...options,
+                        mode: 'cors',
+                        headers: {
+                            'Accept': 'application/json',
+                            ...(options?.headers || {})
+                        }
+                    });
+                    return await response.json();
+                } catch (e) {
+                    console.error('[Jackett Fetch Error]', e);
+                    return { error: true, message: e.message };
+                }
+            },
+
+            // 4. Поиск через Jackett API
             search: function(params) {
-                const config = this.getConfig();
-                if (!config.apiKey) {
-                    return Promise.reject('Jackett API key not configured');
+                if (!this.config.apiKey) {
+                    console.warn('Jackett API key not set');
+                    return Promise.reject('API key required');
                 }
 
-                const url = new URL(`${config.server}/api/v2.0/indexers/all/results`);
-                url.searchParams.append('apikey', config.apiKey);
+                const url = new URL(`${this.config.server}/api/v2.0/indexers/all/results`);
+                url.searchParams.append('apikey', this.config.apiKey);
 
                 Object.keys(params).forEach(key => {
                     if (Array.isArray(params[key])) {
@@ -40,59 +50,45 @@
                     }
                 });
 
-                // Используем оригинальный fetch для запросов Jackett
-                return originalFetch(url.toString(), {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' }
-                }).then(r => r.json());
+                return this.safeFetch(url.toString());
             }
         };
 
-        console.log('[Lampa Mod] Jackett integration activated');
-    }
+        // 5. Аккуратно интегрируем в Lampa без перезаписи
+        if (!Lampa.Jackett) {
+            Lampa.Jackett = JackettManager;
+            console.log('[Lampa Jackett] Integration loaded safely');
+        }
 
-    // ================= SAFE INITIALIZATION =================
-    function initialize() {
-        // Инициализируем только интеграцию Jackett
-        // Не переопределяем глобальные fetch/XHR, чтобы не ломать другие запросы
-        setupJackettIntegration();
-
-        // Добавляем UI элементы для настроек Jackett
+        // 6. Добавляем настройки в интерфейс (опционально)
         if (Lampa.Settings) {
             Lampa.Settings.listener.follow('open', () => {
                 setTimeout(() => {
                     if (!document.querySelector('.jackett-settings')) {
                         const html = `
-                            <div class="jackett-settings" style="margin-top:20px">
-                                <div class="settings-param selector">
+                            <div class="jackett-settings">
+                                <div class="settings-param">
                                     <div class="settings-param__name">Jackett Server</div>
-                                    <div class="settings-param__value">
-                                        <input type="text" class="settings-param__input" 
-                                            value="${Lampa.Storage.get('jackett_server') || 'http://novomih25.duckdns.org'}" 
-                                            placeholder="http://jackett.example.com">
-                                    </div>
+                                    <input type="text" value="${JackettManager.config.server}" 
+                                        class="settings-param__input" data-key="jackett_server">
                                 </div>
-                                <div class="settings-param selector">
-                                    <div class="settings-param__name">Jackett API Key</div>
-                                    <div class="settings-param__value">
-                                        <input type="text" class="settings-param__input" 
-                                            value="${Lampa.Storage.get('jackett_apikey') || ''}" 
-                                            placeholder="Your API Key">
-                                    </div>
+                                <div class="settings-param">
+                                    <div class="settings-param__name">API Key</div>
+                                    <input type="text" value="${JackettManager.config.apiKey}" 
+                                        class="settings-param__input" data-key="jackett_apikey">
                                 </div>
                             </div>
                         `;
                         
-                        const settingsBlock = document.querySelector('.settings-params');
-                        if (settingsBlock) {
-                            settingsBlock.insertAdjacentHTML('beforeend', html);
+                        const container = document.querySelector('.settings-params');
+                        if (container) {
+                            container.insertAdjacentHTML('beforeend', html);
                             
-                            // Сохраняем настройки при изменении
-                            document.querySelectorAll('.jackett-settings input').forEach(input => {
+                            // Обработчик изменений
+                            container.querySelectorAll('[data-key]').forEach(input => {
                                 input.addEventListener('change', (e) => {
-                                    const key = e.target.parentElement.previousElementSibling.textContent.trim() === 'Jackett Server' 
-                                        ? 'jackett_server' 
-                                        : 'jackett_apikey';
+                                    const key = e.target.dataset.key;
+                                    JackettManager.config[key] = e.target.value;
                                     Lampa.Storage.set(key, e.target.value);
                                 });
                             });
@@ -101,12 +97,12 @@
                 }, 300);
             });
         }
-    }
+    }, 500);
 
-    // Запускаем после полной загрузки страницы
+    // 7. Чистая инициализация без побочных эффектов
     if (document.readyState === 'complete') {
-        initialize();
+        clearInterval(waitForLampa);
     } else {
-        window.addEventListener('load', initialize);
+        window.addEventListener('load', () => clearInterval(waitForLampa));
     }
 })();
