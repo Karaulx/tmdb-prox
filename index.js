@@ -1,4 +1,4 @@
-TMDBProxyPlugin {
+class TMDBProxyPlugin {
   constructor() {
     this.proxyBase = 'https://novomih25.duckdns.org:9092/tmdb-api';
     this.init();
