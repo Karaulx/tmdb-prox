@@ -29,21 +29,25 @@ class TMDBProxyPlugin {
       return this.originalRequest(url, params);
     };
 
-    // Перехват изображений (исправленная версия)
+    // Исправленный перехват изображений
     Lampa.TMDB.image = (path, params) => {
       if (!path) return '';
       
-      // Если путь уже содержит наш прокси, возвращаем как есть
+      // Если URL уже проксированный - возвращаем как есть
       if (path.includes(this.imageProxy)) return path;
       
-      // Очищаем путь от оригинального домена
-      const cleanPath = String(path)
-        .replace(/^https?:\/\/image\.tmdb\.org\//, '')
-        .replace(/^\/+/, '');
-      
-      // Формируем URL изображения с параметрами
+      // Определяем размер изображения
       const size = params || 'original';
-      return `${this.imageProxy}/${size}${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
+      
+      // Обработка полного URL TMDB
+      if (path.includes('image.tmdb.org')) {
+        return path.replace('https://image.tmdb.org', `${this.imageProxy}/${size}`);
+      }
+      
+      // Обработка относительного пути (удаляем дублирующиеся /t/p/)
+      const cleanPath = path.replace(/^\/t\/p\/[^\/]+\//, '').replace(/^\//, '');
+      
+      return `${this.imageProxy}/${size}/${cleanPath}`;
     };
 
     console.log('[TMDB Proxy] Plugin initialized');
