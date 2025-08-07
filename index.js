@@ -62,18 +62,22 @@ class TMDBProxyPlugin {
   }
 
   cleanApiUrl(url) {
-    return String(url)
-      .replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
-      .replace(/^https?:\/\/[^\/]+\//, '')
-      .replace(/(\?|&)api_key=[^&]*/, '')
-      .replace(/^\/+/, '');
+    // Удаляем протокол, домен и версию API
+    let cleaned = url.replace(/^https?:\/\/api\.themoviedb\.org\/3\//, '')
+                    .replace(/^https?:\/\/[^\/]+\//, '')
+                    .replace(/^\/+/, '');
+    
+    // Удаляем параметр api_key если он есть
+    cleaned = cleaned.replace(/(\?|&)api_key=[^&]*/, '');
+    
+    return cleaned;
   }
 
   cleanImageUrl(url) {
-    return String(url)
-      .replace(/^https?:\/\/image\.tmdb\.org\//, '')
-      .replace(/^https?:\/\/[^\/]+\//, '')
-      .replace(/^\/+/, '');
+    // Удаляем протокол и домен
+    return url.replace(/^https?:\/\/image\.tmdb\.org\//, '')
+             .replace(/^https?:\/\/[^\/]+\//, '')
+             .replace(/^\/+/, '');
   }
 }
 
