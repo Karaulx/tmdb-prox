@@ -1,66 +1,76 @@
 (function(){
-  // Защита от повторной инициализации
-  if(window._reyohoho_plugin) return;
-  window._reyohoho_plugin = true;
+    if(window._reyohoho_v2) return;
+    window._reyohoho_v2 = true;
 
-  console.log('[REYOHOHO] Plugin initialization');
+    console.log('[REYOHOHO] Initializing enhanced plugin v2');
 
-  // Основной объект плагина
-  const ReyohohoPlugin = {
-    metadata: {
-      name: "Reyohoho Source",
-      id: "reyohoho",
-      type: "universal", // Подходит для фильмов и сериалов
-      version: "1.0"
-    },
-
-    // Метод поиска контента
-    async search(query, tmdb_id, callback) {
-      try {
-        console.log('[REYOHOHO] Searching:', query, tmdb_id);
-        
-        // Запрос к вашему API
-        const response = await fetch(`https://reyohoho-gitlab.vercel.app/api/search?` + new URLSearchParams({
-          q: query,
-          tmdb_id: tmdb_id,
-          clean_title: query.replace(/[^\w\sа-яА-Я]/gi, '').trim()
-        }));
-
-        if(!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        
-        // Форматируем результат для Lampa
-        const results = Array.isArray(data) ? data.map(item => ({
-          title: item.title || query,
-          url: item.url,
-          quality: item.quality || 'HD',
-          tmdb_id: tmdb_id,
-          // Дополнительные поля для лучшего отображения
-          translation: item.translation || 'оригинал',
-          type: item.type || 'video'
-        })) : [];
-
-        console.log(`[REYOHOHO] Found ${results.length} items`);
-        callback(results);
-
-      } catch(e) {
-        console.error('[REYOHOHO] Search error:', e);
-        callback([]); // Возвращаем пустой массив при ошибке
-      }
+    // Ожидаем загрузки Lampa
+    function waitLampa(callback) {
+        if(window.Lampa && window.Lampa.Plugins) callback();
+        else setTimeout(() => waitLampa(callback), 100);
     }
-  };
 
-  // Функция регистрации с задержкой
-  function register() {
-    if(window.Lampa && window.Lampa.Plugins) {
-      window.Lampa.Plugins.push(ReyohohoPlugin);
-      console.log('[REYOHOHO] Plugin registered successfully');
-    } else {
-      setTimeout(register, 100);
-    }
-  }
+    waitLampa(() => {
+        console.log('[REYOHOHO] Lampa ready, installing plugin');
 
-  // Запускаем регистрацию
-  register();
+        const ReyohohoPlugin = {
+            name: "Reyohoho Source",
+            id: "reyohoho",
+            type: "universal",
+            version: "2.0",
+            
+            // Основной метод для поиска источников
+            sources: function(item, callback) {
+                console.log('[REYOHOHO] Processing item:', item.title, item.id);
+                
+                // Подготавливаем параметры запроса
+                const params = {
+                    q: item.title,
+                    tmdb_id: item.id,
+                    year: item.year,
+                    type: item.type,
+                    clean_title: item.title.replace(/[^\w\sа-яА-Я]/gi, '').trim()
+                };
+
+                // Запрос к вашему API
+                fetch(`https://reyohoho-gitlab.vercel.app/api/search?` + new URLSearchParams(params))
+                    .then(response => {
+                        if(!response.ok) throw new Error('API error: ' + response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Форматируем ответ для Lampa
+                        const sources = Array.isArray(data) ? data.map(source => ({
+                            title: source.title || '[REYOHOHO] ' + item.title,
+                            url: source.url,
+                            quality: source.quality || 'HD',
+                            type: source.type || 'video',
+                            translation: source.translation || 'оригинал',
+                            // Дополнительные метаданные
+                            meta: {
+                                year: item.year,
+                                poster: item.poster,
+                                id: item.id
+                            }
+                        })) : [];
+
+                        console.log('[REYOHOHO] Found sources:', sources.length);
+                        callback(sources);
+                    })
+                    .catch(error => {
+                        console.error('[REYOHOHO] Error:', error);
+                        callback([]); // Возвращаем пустой массив при ошибке
+                    });
+            },
+            
+            // Метод для поиска по списку (если нужен)
+            search: function(query, tmdb_id, callback) {
+                this.sources({title: query, id: tmdb_id}, callback);
+            }
+        };
+
+        // Регистрируем плагин
+        window.Lampa.Plugins.push(ReyohohoPlugin);
+        console.log('[REYOHOHO] Plugin successfully registered');
+    });
 })();
