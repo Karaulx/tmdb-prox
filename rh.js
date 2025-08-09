@@ -1,40 +1,48 @@
-(function() {
-    console.log('[RH] Safe plugin initialization');
+(function(){
+  // Безопасная проверка инициализации
+  if(window._rh_plugin_installed) return;
+  window._rh_plugin_installed = true;
+
+  console.log('[RH] Safe initialization v3');
+  
+  const originalTmdb = window.Lampa.Plugins.find(p => p.id === 'tmdb');
+  
+  if(!originalTmdb) {
+    console.error('[RH] TMDB plugin not found!');
+    return;
+  }
+
+  // Клонируем оригинальный TMDB плагин
+  const RhPlugin = JSON.parse(JSON.stringify(originalTmdb));
+  
+  // Модифицируем только нужные параметры
+  RhPlugin.id = 'rh_source';
+  RhPlugin.name = 'RH Source';
+  RhPlugin.version = '2.0';
+  
+  // Сохраняем оригинальный метод
+  const originalSearch = RhPlugin.search;
+  
+  // Переопределяем поиск
+  RhPlugin.search = function(query, tmdb_id, callback) {
+    console.log('[RH] Searching:', query);
     
-    // Не трогаем глобальные объекты Lampa
-    if (!window._rhPluginLoaded) {
-        window._rhPluginLoaded = true;
-        
-        function registerPlugin() {
-            if (!window.Lampa || !window.Lampa.Plugins) {
-                console.log('[RH] Lampa not ready, waiting...');
-                setTimeout(registerPlugin, 100);
-                return;
-            }
-            
-            console.log('[RH] Registering plugin safely');
-            
-            window.Lampa.Plugins.push({
-                name: "RH Source",
-                id: "rh_source",
-                type: "series",
-                version: "1.1",
-                
-                search: function(query, tmdb_id, callback) {
-                    console.log('[RH] Search:', query, tmdb_id);
-                    
-                    // Ваш код API
-                    fetch(`https://api4.rhhhhhhh.live/search?tmdb_id=${tmdb_id}`)
-                        .then(r => r.json())
-                        .then(data => callback(data || []))
-                        .catch(e => {
-                            console.error('[RH] Error:', e);
-                            callback([]);
-                        });
-                }
-            });
+    // Сначала пробуем ваш API
+    fetch(`https://api4.rhhhhhhh.live/search?tmdb_id=${tmdb_id}`)
+      .then(r => r.ok ? r.json() : originalSearch(query, tmdb_id, callback))
+      .then(data => {
+        if(data && data.length > 0) {
+          console.log('[RH] Found results:', data.length);
+          callback(data);
+        } 
+        else {
+          console.log('[RH] Using fallback to TMDB');
+          originalSearch(query, tmdb_id, callback);
         }
-        
-        registerPlugin();
-    }
+      });
+  };
+
+  // Регистрируем плагин
+  window.Lampa.Plugins.push(RhPlugin);
+  console.log('[RH] Plugin successfully registered');
 })();
