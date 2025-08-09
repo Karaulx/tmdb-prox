@@ -1,43 +1,37 @@
 const RhApiPlugin = {
   metadata: {
     name: "RH Video Source",
-    description: "Источник видео с api4.rhhhhhhh.live",
-    version: "1.0",
     id: "rh_api",
-    type: "series" // или "movies" для фильмов
+    type: "series",
+    version: "1.1"
   },
 
-  // Поиск контента по TMDB ID
   async search(query, tmdb_id) {
     try {
-      const response = await fetch(`https://api4.rhhhhhhh.live/search?tmdb_id=${tmdb_id}&query=${encodeURIComponent(query)}`);
+      console.log("[RH Plugin] Запрос к API..."); // Логирование
+      const response = await fetch(`https://api4.rhhhhhhh.live/search?tmdb_id=${tmdb_id}&query=${query}`);
+      
+      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+      
       const data = await response.json();
+      console.log("[RH Plugin] Ответ API:", data); // Логирование
+
+      if (!Array.isArray(data)) throw new Error("Некорректный формат ответа API");
       
       return data.map(item => ({
-        title: item.title || `Сезон ${item.season} Серия ${item.episode}`,
+        title: item.title || "Без названия",
         url: item.url,
         quality: item.quality || "HD",
         tmdb_id: tmdb_id
       }));
     } catch (error) {
-      console.error("Ошибка поиска:", error);
-      return [];
-    }
-  },
-
-  // Получение эпизодов (для сериалов)
-  async getEpisodes(tmdb_id) {
-    try {
-      const response = await fetch(`https://api4.rhhhhhhh.live/episodes?tmdb_id=${tmdb_id}`);
-      return await response.json();
-    } catch (error) {
-      console.error("Ошибка загрузки эпизодов:", error);
+      console.error("[RH Plugin] Ошибка:", error.message);
       return [];
     }
   }
 };
 
-// Регистрация плагина в Lampa
 if (window.Lampa && window.Lampa.registerPlugin) {
   window.Lampa.registerPlugin(RhApiPlugin);
+  console.log("[RH Plugin] Плагин зарегистрирован");
 }
