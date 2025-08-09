@@ -1,37 +1,25 @@
-const RhApiPlugin = {
+console.log("[RH] Скрипт загружен!");
+
+const RhTestPlugin = {
   metadata: {
-    name: "RH Video Source",
-    id: "rh_api",
+    name: "RH Test",
+    id: "rh_test",
     type: "series",
-    version: "1.1"
+    version: "1.0"
   },
-
   async search(query, tmdb_id) {
-    try {
-      console.log("[RH Plugin] Запрос к API..."); // Логирование
-      const response = await fetch(`https://api4.rhhhhhhh.live/search?tmdb_id=${tmdb_id}&query=${query}`);
-      
-      if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-      
-      const data = await response.json();
-      console.log("[RH Plugin] Ответ API:", data); // Логирование
-
-      if (!Array.isArray(data)) throw new Error("Некорректный формат ответа API");
-      
-      return data.map(item => ({
-        title: item.title || "Без названия",
-        url: item.url,
-        quality: item.quality || "HD",
-        tmdb_id: tmdb_id
-      }));
-    } catch (error) {
-      console.error("[RH Plugin] Ошибка:", error.message);
-      return [];
-    }
+    console.log("[RH] Поиск:", query, tmdb_id);
+    return [{
+      title: "Тест от RH (" + query + ")",
+      url: "https://example.com/video.mp4",
+      tmdb_id: tmdb_id
+    }];
   }
 };
 
-if (window.Lampa && window.Lampa.registerPlugin) {
-  window.Lampa.registerPlugin(RhApiPlugin);
-  console.log("[RH Plugin] Плагин зарегистрирован");
+if (window.Lampa) {
+  console.log("[RH] Lampa обнаружена");
+  window.Lampa.registerPlugin(RhTestPlugin);
+} else {
+  console.error("[RH] Lampa не найдена!");
 }
