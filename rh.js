@@ -1,72 +1,74 @@
 (function() {
     'use strict';
 
-    if (window.plugin_reyohoho_ready) return;
-    window.plugin_reyohoho_ready = true;
+    if (window.ReYohohoPluginReady) return;
+    window.ReYohohoPluginReady = true;
 
-    const ReYohohoHandler = {
-        play: async function(data) {
+    function initPlugin() {
+        // Главный обработчик
+        async function handleReYohohoPlay(data) {
             try {
-                // 1. Улучшенная проверка данных
-                const movie = data?.movie || data?.item || data;
-                if (!movie) {
-                    console.error('No movie data:', data);
-                    throw new Error('Данные о фильме не получены');
-                }
+                // 1. Универсальное получение данных фильма
+                const movie = data.movie || data;
+                if (!movie) throw new Error('Нет данных о фильме');
 
-                // 2. Поддержка разных форматов ID
+                // 2. Все возможные варианты ID
+                const id = movie.tmdb_id || movie.kinopoisk_id || movie.id;
+                if (!id) throw new Error('Не найден ID фильма');
+
                 const type = movie.name ? 'tv' : 'movie';
-                const id = movie.tmdb_id || movie.kinopoisk_id || movie.id || 
-                         (movie.ids && (movie.ids.tmdb || movie.ids.kinopoisk));
-
-                if (!id) {
-                    console.error('Movie object:', movie);
-                    throw new Error('Не найден ID фильма (tmdb_id/kinopoisk_id)');
-                }
-
                 const contentUrl = `https://reyohoho.github.io/${type}/${id}`;
-                console.log('Fetching ReYohoho:', contentUrl);
                 
                 const response = await fetch(contentUrl);
-                if (!response.ok) throw new Error(`Ошибка ${response.status}`);
-                
                 const html = await response.text();
                 const videoUrl = html.match(/(https?:\/\/[^\s"'<>]+\.(m3u8|mp4|mkv|webm)[^\s"'<>]*)/i)?.[0];
                 
-                if (!videoUrl) throw new Error('Видео не найдено');
-                
                 Lampa.Player.play({
-                    url: videoUrl,
+                    url: videoUrl || `https://reyohoho.github.io/player.html?id=${id}&type=${type}`,
                     title: movie.title || movie.name,
                     external: false,
-                    source: 'reyohoho',
-                    headers: {
-                        'Referer': contentUrl,
-                        'Origin': 'https://reyohoho.github.io'
-                    }
+                    source: 'reyohoho'
                 });
-                
+
             } catch (error) {
-                console.error('ReYohoho Error:', error);
-                Lampa.Noty.show('Ошибка при загрузке');
+                console.error('ReYohoho error:', error);
+                Lampa.Noty.show('Ошибка ReYohoho');
+            }
+        }
+
+        // Добавление кнопки в интерфейс (исправленный вариант)
+        Lampa.Listener.follow('full', function(e) {
+            if (e.type == 'complite') {
+                const button = `
+                    <div class="selector__item selector-available" data-type="reyohoho">
+                        <div class="selector__icon">
+                            <svg width="24" height="24"><use xlink:href="#player"/></svg>
+                        </div>
+                        <div class="selector__title">ReYohoho</div>
+                    </div>
+                `;
                 
-                // 3. Улучшенный fallback с проверкой
-                const movie = data?.movie || data?.item || data;
-                const id = movie?.tmdb_id || movie?.kinopoisk_id || movie?.id;
-                if (id) {
-                    const type = movie.name ? 'tv' : 'movie';
-                    const playerUrl = `https://reyohoho.github.io/player.html?id=${id}&type=${type}`;
-                    Lampa.Player.play({
-                        url: playerUrl,
-                        title: movie.title || movie.name,
-                        external: false
-                    });
+                const container = e.object.activity.render().find('.selector__items');
+                if (container.length) {
+                    container.append($(button).on('hover:enter', () => handleReYohohoPlay(e.data)));
                 }
             }
-        },
+        });
 
-        // ... остальные методы (menu, button) без изменений ...
-    };
+        // Регистрация обработчика
+        if (Lampa.Player.handler?.add) {
+            Lampa.Player.handler.add({
+                name: 'reyohoho',
+                title: 'ReYohoho',
+                priority: 10,
+                handler: handleReYohohoPlay
+            });
+        }
+    }
 
-    // ... остальная часть кода без изменений ...
+    // Запуск плагина
+    if (window.appready) initPlugin();
+    else Lampa.Listener.follow('app', e => e.type == 'ready' && initPlugin());
+
+    console.log('ReYohoho plugin loaded');
 })();
