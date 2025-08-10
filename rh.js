@@ -1,65 +1,61 @@
+// ReYohoho Provider для Lampa 2.4.6
 (function() {
-    // Проверка на дублирование
-    if (window.__reyohoho_final_fix) return;
-    window.__reyohoho_final_fix = true;
+    // Уникальный идентификатор плагина
+    if (window.__reyohoho_246_plugin) return;
+    window.__reyohoho_246_plugin = true;
 
-    class ReYohohoProvider {
-        constructor() {
-            this.name = 'ReYohoho';
-            this.id = 'reyohoho_plugin';
-            this.type = 'tv'; // Тип для сериалов (для фильмов используйте 'movie')
-            this.supports = ['movie', 'tv']; // Поддерживаемые типы контента
-            this.icon = 'https://reyohoho.github.io/favicon.ico';
-        }
+    // Конфигурация (обязательные поля для Lampa 2.x)
+    var providerConfig = {
+        name: "ReYohoho",
+        description: "Прямые ссылки через reyohoho.github.io",
+        version: "1.2",
+        type: "movie,tv", // Важно! Указать оба типа через запятую
+        icon: "https://i.imgur.com/3YXh7Qy.png" // Прозрачная иконка 256x256
+    };
 
-        async getUrl(params) {
-            try {
-                // Получаем ID из параметров
-                const id = params.kinopoisk_id || params.tmdb_id;
-                if (!id) throw new Error('ID не найден');
+    // Основная функция получения ссылки
+    function getStream(params, callback) {
+        try {
+            // 1. Получаем идентификаторы
+            var id = params.kinopoisk_id || params.tmdb_id;
+            if (!id) throw new Error("Не получен ID контента");
 
-                // Формируем URL для ReYohoho
-                const baseUrl = 'https://reyohoho.github.io/reyohoho';
-                let contentUrl = `${baseUrl}/${params.type === 'movie' ? 'movie' : 'tv'}/${id}`;
+            // 2. Формируем URL
+            var baseUrl = "https://reyohoho.github.io/player.html";
+            var url = baseUrl + "?id=" + id + "&type=" + (params.type || 'movie');
 
-                // Для сериалов добавляем сезон и эпизод
-                if (params.type === 'tv') {
-                    contentUrl += `?season=${params.season || 1}&episode=${params.episode || 1}`;
-                }
-
-                // Возвращаем данные для плеера
-                return {
-                    url: contentUrl,
-                    name: this.name,
-                    title: params.title,
-                    external: false // Используем внутренний плеер Lampa
-                };
-
-            } catch (e) {
-                console.error('ReYohohoProvider error:', e);
-                return null;
+            // 3. Для сериалов добавляем параметры
+            if (params.type === 'tv') {
+                url += "&season=" + (params.season || 1);
+                url += "&episode=" + (params.episode || 1);
             }
+
+            // 4. Возвращаем результат
+            callback({
+                url: url,
+                name: providerConfig.name,
+                title: params.title + " (ReYohoho)",
+                external: false, // Важно для встроенного плеера
+                headers: {
+                    "Referer": "https://reyohoho.github.io/",
+                    "Origin": "https://reyohoho.github.io"
+                }
+            });
+
+        } catch (e) {
+            console.error("[ReYohoho] Ошибка:", e);
+            callback(null);
         }
     }
 
-    // Функция регистрации провайдера
-    function registerProvider() {
-        // Проверяем доступность API Lampa
-        if (typeof window.plugin_provider === 'function') {
-            window.plugin_provider(new ReYohohoProvider());
-            console.log('ReYohoho provider успешно зарегистрирован');
-        } else {
-            // Альтернативный метод для старых версий Lampa
-            window.extensions_provider = window.extensions_provider || [];
-            window.extensions_provider.push(new ReYohohoProvider());
-            console.log('ReYohoho provider добавлен через extensions_provider');
-        }
-    }
-
-    // Автоматическая регистрация при загрузке
-    if (document.readyState === 'complete') {
-        registerProvider();
+    // Регистрация в Lampa 2.4.6
+    if (window.extensions_provider) {
+        window.extensions_provider.push({
+            config: providerConfig,
+            get: getStream
+        });
+        console.log("[ReYohoho] Плагин успешно зарегистрирован");
     } else {
-        window.addEventListener('load', registerProvider);
+        console.error("[ReYohoho] Не найден extensions_provider");
     }
 })();
