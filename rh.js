@@ -1,21 +1,24 @@
 (function(){
-    if(window.__rh_full_debug) return;
-    window.__rh_full_debug = true;
-    
-    console.log('[RH FULL DEBUG] Init');
+    if(window.__rh_guaranteed_loader) return;
+    window.__rh_guaranteed_loader = true;
 
-    // Конфигурация
+    console.log('[RH GUARANTEED LOADER] Initializing');
+
+    // 1. Конфигурация
     const config = {
-        name: "▶️ RH Плеер",
+        name: "▶️ Смотреть",
         apiUrl: "https://api4.rhhhhhhh.live/play",
-        btnId: "rh-debug-btn",
-        debug: true
+        btnId: "rh-guaranteed-btn",
+        retryDelay: 500,
+        maxRetries: 20 // 10 секунд максимум
     };
 
-    // 1. Стиль с гарантированной видимостью
-    const style = document.createElement('style');
-    style.textContent = `
-        #${config.btnId} {
+    // 2. Создаем кнопку с абсолютным позиционированием
+    const createButton = () => {
+        const btn = document.createElement('button');
+        btn.id = config.btnId;
+        btn.textContent = config.name;
+        btn.style.cssText = `
             position: fixed !important;
             right: 20px !important;
             bottom: 80px !important;
@@ -29,132 +32,71 @@
             cursor: pointer !important;
             border: none !important;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-        }
-        #${config.btnId}:hover {
-            opacity: 0.9 !important;
-        }
-    `;
-    document.head.appendChild(style);
-
-    // 2. Функция логирования
-    const log = (message) => {
-        if(config.debug) {
-            console.log(`[RH DEBUG] ${message}`);
-            // Дополнительно можно отправлять логи на сервер
-        }
-    };
-
-    // 3. Получение данных карточки
-    const getCardData = () => {
-        try {
-            const card = window.Lampa?.Storage?.get('card') || {};
-            if(card.id) {
-                log(`Card data: ${JSON.stringify(card)}`);
-                return card;
-            }
-            
-            // Альтернативные методы
-            const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
-            if(urlMatch) {
-                return {id: urlMatch[2], type: urlMatch[1]};
-            }
-            
-            return null;
-        } catch(e) {
-            log(`Error getting card: ${e.message}`);
-            return null;
-        }
-    };
-
-    // 4. Создание кнопки с полной диагностикой
-    const createButton = () => {
-        // Удаляем старую кнопку если есть
-        const oldBtn = document.getElementById(config.btnId);
-        if(oldBtn) {
-            log('Removing old button');
-            oldBtn.remove();
-        }
-
-        // Создаем новую кнопку
-        const btn = document.createElement('button');
-        btn.id = config.btnId;
-        btn.textContent = config.name;
-        
-        // Вешаем несколько обработчиков для диагностики
-        btn.addEventListener('click', () => {
-            log('Button clicked (click event)');
-            handleClick();
-        });
-        
-        btn.onmousedown = () => log('Button mouse down');
-        btn.onmouseup = () => log('Button mouse up');
-        
+        `;
         document.body.appendChild(btn);
-        log('Button created');
+        return btn;
     };
 
-    // 5. Обработчик клика с диагностикой
-    const handleClick = () => {
-        log('HandleClick started');
-        
-        const card = getCardData();
-        if(!card?.id) {
-            log('No card ID available');
-            alert('Данные карточки не загружены. Пожалуйста, откройте карточку полностью и попробуйте снова.');
-            return;
+    // 3. Получаем TMDB ID всеми возможными способами
+    const getTmdbId = () => {
+        // Способ 1: Через Lampa Storage
+        try {
+            const card = window.Lampa?.Storage?.get('card');
+            if(card?.id) return {id: card.id, type: card.type || 'movie'};
+        } catch(e) {}
+
+        // Способ 2: Из URL страницы
+        const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+        if(urlMatch) return {id: urlMatch[2], type: urlMatch[1]};
+
+        // Способ 3: Из meta-тегов
+        const metaId = document.querySelector('meta[property="tmdb:id"], meta[name="tmdb_id"]');
+        if(metaId) {
+            return {
+                id: metaId.getAttribute('content') || metaId.getAttribute('value'),
+                type: document.querySelector('meta[property="tmdb:type"]')?.content || 'movie'
+            };
         }
 
-        log(`Sending request with ID: ${card.id}`);
-        
-        // Формируем URL с timestamp для избежания кеширования
-        const params = new URLSearchParams({
-            tmdb_id: card.id,
-            type: card.type || 'movie',
-            _: Date.now() // Добавляем timestamp
-        });
-        
-        const url = `${config.apiUrl}?${params.toString()}`;
-        log(`Final URL: ${url}`);
-        
-        // Открываем в новом окне с принудительным обходом кеша
-        const newWindow = window.open('', '_blank');
-        if(newWindow) {
-            newWindow.location = url;
-            log('New window opened');
+        return null;
+    };
+
+    // 4. Основная функция
+    const init = (retryCount = 0) => {
+        const tmdbData = getTmdbId();
+        const btn = document.getElementById(config.btnId) || createButton();
+
+        if(tmdbData?.id) {
+            // Если ID получен - настраиваем кнопку
+            btn.onclick = () => {
+                const params = new URLSearchParams({
+                    tmdb_id: tmdbData.id,
+                    type: tmdbData.type,
+                    _: Date.now() // Для избежания кеширования
+                });
+                window.open(`${config.apiUrl}?${params.toString()}`, '_blank');
+            };
+            btn.style.display = 'block';
+            console.log(`TMDB ID found: ${tmdbData.id}`);
+        } else if(retryCount < config.maxRetries) {
+            // Если ID еще не доступен - повторяем попытку
+            btn.style.display = 'none';
+            setTimeout(() => init(retryCount + 1), config.retryDelay);
         } else {
-            log('Window blocked by popup blocker');
-            alert('Пожалуйста, разрешите всплывающие окна для этого сайта');
+            // Превышено количество попыток
+            btn.style.display = 'block';
+            btn.onclick = () => alert('Не удалось получить данные карточки. Пожалуйста, обновите страницу.');
+            console.warn('Failed to get TMDB ID after retries');
         }
     };
 
-    // 6. Инициализация с несколькими проверками
-    const init = () => {
-        log('Initialization started');
-        
-        createButton();
-        
-        // Проверка каждые 2 секунды
-        const interval = setInterval(() => {
-            if(!document.getElementById(config.btnId)) {
-                log('Button missing, recreating...');
-                createButton();
-            }
-        }, 2000);
-        
-        // Остановка через 30 секунд
-        setTimeout(() => {
-            clearInterval(interval);
-            log('Initialization completed');
-        }, 30000);
-    };
-
-    // Запускаем при полной загрузке
+    // 5. Запускаем при полной загрузке страницы
     if(document.readyState === 'complete') {
-        setTimeout(init, 500);
+        setTimeout(init, 1000);
     } else {
-        window.addEventListener('load', () => setTimeout(init, 500));
+        window.addEventListener('load', () => setTimeout(init, 1000));
     }
-    
-    // Дублирующий запуск для надежности
+
+    // 6. Дополнительный запуск через 3 секунды для надежности
     setTimeout(init, 3000);
 })();
