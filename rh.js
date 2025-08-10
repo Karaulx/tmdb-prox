@@ -1,19 +1,19 @@
 (function(){
-    if(window.__rh_super_loader) return;
-    window.__rh_super_loader = true;
+    if(window.__rh_nuclear_loader) return;
+    window.__rh_nuclear_loader = true;
 
-    console.log('[RH SUPER LOADER] Initializing');
+    console.log('[RH NUCLEAR LOADER] Starting aggressive interception');
 
     // 1. Конфигурация
     const config = {
-        name: "▶️ Смотреть на RH",
+        name: "▶️ RH Плеер",
         apiUrl: "https://api4.rhhhhhhh.live/play",
-        btnId: "rh-super-btn",
-        retryDelay: 500,
-        maxRetries: 30 // 15 секунд максимум
+        btnId: "rh-nuclear-btn",
+        checkInterval: 500,
+        maxChecks: 40 // 20 секунд максимум
     };
 
-    // 2. Создаем кнопку с гарантированным отображением
+    // 2. Создаем "неубиваемую" кнопку
     const createButton = () => {
         let btn = document.getElementById(config.btnId);
         if(!btn) {
@@ -23,148 +23,178 @@
                 position: fixed !important;
                 right: 20px !important;
                 bottom: 80px !important;
-                z-index: 99999 !important;
-                background: #FF2D2D !important;
+                z-index: 2147483647 !important; /* Максимальный z-index */
+                background: linear-gradient(135deg, #FF0000, #FF4500) !important;
                 color: white !important;
-                padding: 12px 24px !important;
-                border-radius: 10px !important;
-                font-size: 16px !important;
+                padding: 14px 28px !important;
+                border-radius: 12px !important;
+                font-size: 18px !important;
                 font-weight: bold !important;
                 cursor: pointer !important;
                 border: none !important;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
-                display: none !important;
+                box-shadow: 0 6px 24px rgba(255, 0, 0, 0.4) !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
             `;
             document.body.appendChild(btn);
         }
         return btn;
     };
 
-    // 3. Все возможные способы получения TMDB ID
-    const getTmdbId = () => {
-        // Способ 1: Через Lampa Storage (основной)
-        try {
-            const card = window.Lampa?.Storage?.get('card');
-            if(card?.id) {
-                console.log('ID получен через Lampa Storage:', card.id);
-                return {
-                    id: card.id,
-                    type: card.type || 'movie',
-                    title: card.title || ''
-                };
-            }
-        } catch(e) {
-            console.error('Ошибка при доступе к Lampa Storage:', e);
-        }
-
-        // Способ 2: Из URL страницы
-        try {
-            const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
-            if(urlMatch) {
-                console.log('ID получен из URL:', urlMatch[2]);
-                return {
-                    id: urlMatch[2],
-                    type: urlMatch[1]
-                };
-            }
-        } catch(e) {
-            console.error('Ошибка при парсинге URL:', e);
-        }
-
-        // Способ 3: Из meta-тегов
-        try {
-            const metaId = document.querySelector('meta[property="tmdb:id"], meta[name="tmdb_id"]');
-            if(metaId) {
-                const id = metaId.getAttribute('content') || metaId.getAttribute('value');
-                console.log('ID получен из meta-тегов:', id);
-                return {
-                    id: id,
-                    type: document.querySelector('meta[property="tmdb:type"]')?.content || 'movie'
-                };
-            }
-        } catch(e) {
-            console.error('Ошибка при чтении meta-тегов:', e);
-        }
-
-        // Способ 4: Из JSON-LD данных
-        try {
-            const jsonLd = document.querySelector('script[type="application/ld+json"]');
-            if(jsonLd) {
-                const data = JSON.parse(jsonLd.textContent);
-                const url = data?.url || '';
-                const match = url.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
-                if(match) {
-                    console.log('ID получен из JSON-LD:', match[2]);
-                    return {
+    // 3. Перехват всех возможных мест, где может быть TMDB ID
+    const huntForTmdbId = () => {
+        // Все возможные источники ID в порядке приоритета
+        const sources = [
+            // 1. Lampa Storage (оригинальный способ)
+            () => {
+                try {
+                    const card = window.Lampa?.Storage?.get('card');
+                    if(card?.id) return {
+                        id: card.id,
+                        type: card.type || 'movie',
+                        title: card.title || ''
+                    };
+                } catch(e) {}
+                return null;
+            },
+            
+            // 2. Внутренние переменные Lampa
+            () => {
+                try {
+                    if(window.Lampa?.TMDB?.id) return {
+                        id: window.Lampa.TMDB.id,
+                        type: window.Lampa.TMDB.type
+                    };
+                    
+                    if(window.Lampa?.Player?.current?.id) return {
+                        id: window.Lampa.Player.current.id,
+                        type: window.Lampa.Player.current.type
+                    };
+                } catch(e) {}
+                return null;
+            },
+            
+            // 3. URL страницы
+            () => {
+                try {
+                    const match = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+                    if(match) return {
                         id: match[2],
                         type: match[1]
                     };
-                }
+                } catch(e) {}
+                return null;
+            },
+            
+            // 4. Атрибуты data-* в DOM
+            () => {
+                try {
+                    const elements = document.querySelectorAll('[data-id][data-type]');
+                    for(let el of elements) {
+                        if(el.dataset.id && el.dataset.type) {
+                            return {
+                                id: el.dataset.id,
+                                type: el.dataset.type
+                            };
+                        }
+                    }
+                } catch(e) {}
+                return null;
+            },
+            
+            // 5. Внутренние события Lampa
+            () => {
+                try {
+                    if(window._lampa_events?.current?.id) return {
+                        id: window._lampa_events.current.id,
+                        type: window._lampa_events.current.type
+                    };
+                } catch(e) {}
+                return null;
             }
-        } catch(e) {
-            console.error('Ошибка при парсинге JSON-LD:', e);
-        }
+        ];
 
-        // Способ 5: Из атрибутов кнопок плеера
-        try {
-            const playerBtn = document.querySelector('[data-id][data-type]');
-            if(playerBtn) {
-                console.log('ID получен из атрибутов кнопки:', playerBtn.dataset.id);
-                return {
-                    id: playerBtn.dataset.id,
-                    type: playerBtn.dataset.type
-                };
+        // Пробуем все источники по очереди
+        for(let source of sources) {
+            try {
+                const result = source();
+                if(result?.id) {
+                    console.log('TMDB ID найден через:', source.toString().slice(0, 100));
+                    return result;
+                }
+            } catch(e) {
+                console.error('Ошибка в источнике:', e);
             }
-        } catch(e) {
-            console.error('Ошибка при чтении атрибутов кнопки:', e);
         }
 
         return null;
     };
 
-    // 4. Инициализация с агрессивным поиском ID
-    const init = (retryCount = 0) => {
+    // 4. Агрессивный мониторинг
+    const startNuclearMonitoring = () => {
         const btn = createButton();
-        const tmdbData = getTmdbId();
+        let checksCount = 0;
+        let success = false;
 
-        if(tmdbData?.id) {
-            // Настройка кнопки при успешном получении ID
-            btn.textContent = `${config.name}`;
-            btn.onclick = () => {
-                const params = new URLSearchParams({
-                    tmdb_id: tmdbData.id,
-                    type: tmdbData.type,
-                    title: tmdbData.title || '',
-                    _: Date.now()
-                });
-                window.open(`${config.apiUrl}?${params.toString()}`, '_blank');
-            };
-            btn.style.display = 'block';
-            console.log('Кнопка активирована с ID:', tmdbData.id);
-        } else if(retryCount < config.maxRetries) {
-            // Продолжаем попытки
-            setTimeout(() => init(retryCount + 1), config.retryDelay);
-            if(retryCount % 5 === 0) {
-                console.log(`Попытка ${retryCount + 1}/${config.maxRetries}...`);
+        const checkInterval = setInterval(() => {
+            checksCount++;
+            const tmdbData = huntForTmdbId();
+
+            if(tmdbData?.id && !success) {
+                // Успешно нашли ID
+                success = true;
+                clearInterval(checkInterval);
+                
+                btn.innerHTML = `<span style="font-size:20px">▶️</span> ${config.name}`;
+                btn.onclick = () => {
+                    const params = new URLSearchParams({
+                        tmdb_id: tmdbData.id,
+                        type: tmdbData.type,
+                        title: tmdbData.title || '',
+                        _: Date.now(),
+                        from: 'nuclear_loader'
+                    });
+                    window.open(`${config.apiUrl}?${params.toString()}`, '_blank');
+                };
+                
+                console.log(`Успешно! ID: ${tmdbData.id}, тип: ${tmdbData.type}`);
+                
+                // Добавляем анимацию для привлечения внимания
+                btn.style.animation = 'rh-pulse 1.5s infinite';
+                const pulseStyle = document.createElement('style');
+                pulseStyle.textContent = `
+                    @keyframes rh-pulse {
+                        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+                        70% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(255, 0, 0, 0); }
+                        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+                    }
+                `;
+                document.head.appendChild(pulseStyle);
+                
+                return;
             }
-        } else {
-            // Все попытки исчерпаны
-            btn.textContent = '❌ Ошибка загрузки';
-            btn.onclick = () => {
-                alert('Пожалуйста:\n1. Полностью откройте карточку\n2. Обновите страницу\n3. Попробуйте снова');
-            };
-            btn.style.display = 'block';
-            console.error('Не удалось получить TMDB ID после всех попыток');
-        }
+
+            if(checksCount >= config.maxChecks && !success) {
+                // Превышено количество попыток
+                clearInterval(checkInterval);
+                btn.innerHTML = `<span style="font-size:20px">❌</span> Ошибка загрузки`;
+                btn.onclick = () => {
+                    alert('Пожалуйста:\n1. Убедитесь что карточка полностью открыта\n2. Проверьте интернет-соединение\n3. Обновите страницу (Ctrl+F5)');
+                };
+                btn.style.background = '#FF0000';
+                console.error('Не удалось получить TMDB ID после всех попыток');
+            }
+        }, config.checkInterval);
     };
 
-    // 5. Запуск
+    // 5. Запускаем при полной загрузке страницы
     if(document.readyState === 'complete') {
-        setTimeout(init, 500);
+        startNuclearMonitoring();
     } else {
-        window.addEventListener('load', () => setTimeout(init, 500));
+        window.addEventListener('load', startNuclearMonitoring);
     }
 
-    // Дублирующий запуск через 5 секунд
-    setTimeout(init, 5000);
+    // Дублирующий запуск через 3 секунды
+    setTimeout(startNuclearMonitoring, 3000);
 })();
