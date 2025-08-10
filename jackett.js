@@ -1,41 +1,65 @@
 (function() {
-    'use strict';
-    
-    const fixUrl = url => url.replace(/([^:]\/)\/+/g, '$1');
+    // Проверка на дублирование
+    if (window.__reyohoho_plugin_v4) return;
+    window.__reyohoho_plugin_v4 = true;
 
-    // 1. Перехват fetch с обработкой ошибок
-    const _originalFetch = window.fetch;
-    window.fetch = async function(input, init) {
-        try {
-            input = typeof input === 'string' ? fixUrl(input) : input;
-            
-            const response = await _originalFetch.call(this, input, {
-                ...init,
-                mode: 'no-cors',
-                headers: {
-                    ...(init?.headers || {}),
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (!response.ok) throw new Error('Network error');
-            return response;
-            
-        } catch (error) {
-            console.error('Fetch error:', error);
-            throw error;
-        }
+    // Конфигурация плагина
+    var config = {
+        name: "ReYohoho",
+        description: "Прямые ссылки с reyohoho.github.io",
+        version: "1.0",
+        type: "movie,tv",
+        icon: "https://reyohoho.github.io/favicon.ico"
     };
 
-    // 2. Перехват XMLHttpRequest
-    if (window.XMLHttpRequest) {
-        const _originalOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function() {
-            arguments[1] = fixUrl(arguments[1]);
-            this.addEventListener('error', () => console.error('XHR error'));
-            return _originalOpen.apply(this, arguments);
-        };
+    // Основная функция получения ссылки
+    function getUrl(params, callback) {
+        try {
+            var id = params.kinopoisk_id || params.tmdb_id;
+            if (!id) throw new Error("ID контента не найден");
+
+            var url = "https://reyohoho.github.io/player.html?" + 
+                     "id=" + id + 
+                     "&type=" + (params.type || 'movie');
+
+            if (params.type === 'tv') {
+                url += "&season=" + (params.season || 1) + 
+                       "&episode=" + (params.episode || 1);
+            }
+
+            callback({
+                url: url,
+                name: config.name,
+                title: params.title,
+                external: false
+            });
+
+        } catch (e) {
+            console.error("ReYohoho error:", e);
+            callback(null);
+        }
     }
 
-    console.log('[Network Fixer] Activated');
+    // Совместимость с новым API Lampa
+    if (typeof Lampa === 'object' && Lampa.Plugins) {
+        Lampa.Plugins.add({
+            name: config.name,
+            component: {
+                config: config,
+                get: getUrl
+            }
+        });
+        console.log("ReYohoho plugin зарегистрирован через Lampa.Plugins");
+    }
+    // Совместимость со старыми версиями
+    else if (typeof window.extensions_provider !== "undefined") {
+        window.extensions_provider.push({
+            config: config,
+            get: getUrl
+        });
+        console.log("ReYohoho plugin зарегистрирован через extensions_provider");
+    }
+    else {
+        console.error("Не удалось зарегистрировать плагин - API Lampa не найдено");
+    }
 })();
