@@ -5,7 +5,17 @@
         window.plugin_reyohoho_ready = true;
 
         function add() {
-            // Добавляем красивую кнопку в интерфейс
+            function button_click(data) {
+                Lampa.Activity.push({
+                    url: '',
+                    title: 'ReYohoho',
+                    component: 'reyohoho',
+                    movie: data.movie,
+                    type: data.movie.name ? 'tv' : 'movie'
+                });
+            }
+
+            // Добавляем кнопку на карточку фильма/сериала
             Lampa.Listener.follow('full', function(e) {
                 if (e.type == 'complite') {
                     var button = `
@@ -18,7 +28,7 @@
                     
                     var btn = $(button);
                     btn.on('hover:enter', function() {
-                        handleReYohohoPlay(e.data);
+                        button_click(e.data);
                     });
                     
                     if (e.data && e.object) {
@@ -27,60 +37,52 @@
                 }
             });
 
-            // Функция обработки воспроизведения
-            async function handleReYohohoPlay(data) {
-                const movie = data.movie;
-                const type = movie.name ? 'tv' : 'movie';
-                
-                try {
-                    // Формируем URL для парсинга
-                    const contentUrl = `https://reyohoho.github.io/${type}/${movie.tmdb_id || movie.kinopoisk_id}`;
+            // Регистрируем компонент для обработки просмотра
+            Lampa.Component.add('reyohoho', {
+                create: function() {
+                    var network = new Lampa.Reguest();
+                    var scroll = new Lampa.Scroll({mask: true, over: true});
+                    var files = new Lampa.Explorer(this);
                     
-                    // Получаем HTML страницы
-                    const html = await fetch(contentUrl).then(r => r.text());
-                    
-                    // Извлекаем ссылку на видео
-                    const videoUrl = extractVideoUrl(html);
-                    if (!videoUrl) throw new Error('Ссылка на видео не найдена');
-                    
-                    // Запускаем плеер
-                    Lampa.Player.play(videoUrl, {
-                        title: movie.title || movie.name,
-                        external: false,
-                        headers: {
-                            'Referer': 'https://reyohoho.github.io/',
-                            'Origin': 'https://reyohoho.github.io'
-                        }
-                    });
-                    
-                } catch (error) {
-                    console.error('ReYohoho error:', error);
-                    Lampa.Noty.show('Не удалось начать воспроизведение');
-                    
-                    // Fallback: пытаемся открыть через iframe
-                    const playerUrl = `https://reyohoho.github.io/player.html?id=${movie.tmdb_id || movie.kinopoisk_id}&type=${type}`;
-                    Lampa.Player.play(playerUrl, {
-                        title: movie.title || movie.name,
-                        external: false
-                    });
-                }
-            }
+                    this.loading = function(status) {
+                        if (status) files.loading(true);
+                        else files.loading(false);
+                    };
 
-            // Функция извлечения ссылки на видео
-            function extractVideoUrl(html) {
-                // Ищем m3u8 ссылку
-                const m3u8Match = html.match(/https?:\/\/[^\s"']+\.m3u8[^\s"']*/i);
-                if (m3u8Match) return m3u8Match[0];
-                
-                // Ищем iframe с видео
-                const iframeMatch = html.match(/<iframe[^>]+src="([^"]+)"/i);
-                if (iframeMatch) return iframeMatch[1];
-                
-                return null;
-            }
+                    this.start = function() {
+                        var movie = this.movie;
+                        var type = this.type;
+                        
+                        this.loading(true);
+                        
+                        // Формируем URL для ReYohoho
+                        var url = 'https://reyohoho.github.io/player.html?' + 
+                                  'id=' + (movie.kinopoisk_id || movie.tmdb_id) + 
+                                  '&type=' + type;
+                        
+                        if (type === 'tv') {
+                            url += '&season=1&episode=1';
+                        }
+                        
+                        // Открываем в плеере Lampa
+                        Lampa.Player.play(url, {
+                            title: movie.title || movie.name,
+                            external: false,
+                            headers: {
+                                'Referer': 'https://reyohoho.github.io/',
+                                'Origin': 'https://reyohoho.github.io'
+                            }
+                        });
+                        
+                        this.loading(false);
+                        Lampa.Activity.backward();
+                    };
+                    
+                    return files.render();
+                }
+            });
         }
 
-        // Запуск плагина
         if (window.appready) add(); 
         else {
             Lampa.Listener.follow('app', function(e) {
