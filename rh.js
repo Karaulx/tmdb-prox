@@ -1,93 +1,55 @@
 (function(){
-    // Защита от дублирования
-    if(window.__rh_ultimate_fix) return;
-    window.__rh_ultimate_fix = true;
+    if(window.__rh_reyohoho_launcher) return;
+    window.__rh_reyohoho_launcher = true;
 
-    console.log('[RH ULTIMATE FIX] Initializing');
+    console.log('[RH REYOHOHO LAUNCHER] Initializing');
 
-    // Конфигурация плагина
-    const plugin = {
-        id: "rh_ultimate_source",
-        name: "RH Видео",
-        type: "universal",
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`,
-        priority: 100,
+    // Конфигурация
+    const config = {
+        id: "rh_reyohoho",
+        name: "Смотреть", 
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FF0000"><path d="M8 5v14l11-7z"/></svg>`,
+        reyohohoUrl: "https://reyohoho.ru/player", // Ваш сайт
         style: `
-            .rh-source-btn {
+            .rh-reyohoho-btn {
                 display: flex;
                 align-items: center;
                 padding: 10px 15px;
                 margin: 5px;
-                background: rgba(255, 0, 0, 0.2);
+                background: rgba(255, 40, 40, 0.15);
                 border-radius: 8px;
                 cursor: pointer;
                 transition: all 0.3s;
             }
-            .rh-source-btn:hover {
-                background: rgba(255, 0, 0, 0.3);
+            .rh-reyohoho-btn:hover {
+                background: rgba(255, 40, 40, 0.25);
             }
-            .rh-source-icon {
+            .rh-reyohoho-icon {
                 width: 24px;
                 height: 24px;
                 margin-right: 8px;
             }
-            .rh-source-title {
-                font-size: 16px;
-                font-weight: 500;
-            }
         `
     };
 
-    // Метод для получения видео
-    plugin.source = function(callback, item) {
-        console.log('[RH] Запрос видео для:', item.title);
-        
-        // Ваш реальный источник видео
-        const videos = [{
-            title: `${item.title} (RH Source)`,
-            file: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-            type: 'mp4',
-            quality: '1080p'
-        }];
-        
-        callback(videos);
-    };
-
-    // Регистрация плагина
-    if(!window._plugins) window._plugins = [];
-    window._plugins.push(plugin);
-
     // Добавляем стили
     const style = document.createElement('style');
-    style.textContent = plugin.style;
+    style.textContent = config.style;
     document.head.appendChild(style);
 
-    // Функция для добавления кнопки
-    const addButton = () => {
+    // Функция создания кнопки
+    const createButton = () => {
         // Удаляем старую кнопку если есть
-        const oldBtn = document.querySelector('.rh-source-btn');
+        const oldBtn = document.querySelector('.rh-reyohoho-btn');
         if(oldBtn) oldBtn.remove();
 
-        // 1. Попробуем найти любой известный контейнер
-        const containers = [
-            '.selector__items',
-            '.selectbox',
-            '.source-selector',
-            '.player__sources',
-            '.player__controls',
-            '.player--container'
-        ];
-
-        let container = null;
-        for(const selector of containers) {
-            container = document.querySelector(selector);
-            if(container) break;
-        }
-
-        // 2. Если не нашли контейнер - создаем свой
+        // Ищем контейнер для кнопки
+        let container = document.querySelector('.selector__items, .selectbox, .player__sources');
+        
+        // Если контейнер не найден, создаем свой
         if(!container) {
             container = document.createElement('div');
-            container.className = 'rh-source-container';
+            container.className = 'rh-reyohoho-container';
             container.style.position = 'fixed';
             container.style.bottom = '80px';
             container.style.right = '20px';
@@ -95,61 +57,45 @@
             document.body.appendChild(container);
         }
 
-        // 3. Создаем кнопку
+        // Создаем кнопку
         const button = document.createElement('div');
-        button.className = 'rh-source-btn';
-        button.title = plugin.name;
+        button.className = 'rh-reyohoho-btn';
         button.innerHTML = `
-            <div class="rh-source-icon">${plugin.icon}</div>
-            <div class="rh-source-title">${plugin.name}</div>
+            <div class="rh-reyohoho-icon">${config.icon}</div>
+            <div>${config.name}</div>
         `;
 
-        // 4. Обработчик клика
+        // Обработчик клика
         button.onclick = () => {
             const card = window.Lampa?.Storage?.get('card');
-            if(card) {
-                plugin.source((videos) => {
-                    if(videos.length && window.Lampa?.Player?.play) {
-                        window.Lampa.Player.play({
-                            title: card.title,
-                            files: videos
-                        });
-                    }
-                }, card);
-            }
+            if(!card || !card.id) return;
+
+            // Формируем URL для reyohoho
+            const url = new URL(config.reyohohoUrl);
+            url.searchParams.append('tmdb_id', card.id);
+            url.searchParams.append('type', card.type === 'movie' ? 'movie' : 'tv');
+            url.searchParams.append('title', encodeURIComponent(card.title));
+
+            // Открываем в новом окне или iframe
+            window.open(url.toString(), '_blank');
         };
 
-        // 5. Добавляем кнопку
         container.appendChild(button);
-        console.log('[RH] Кнопка успешно добавлена');
+    };
 
-        // 6. Периодическая проверка видимости
-        const checkVisibility = () => {
-            if(!document.contains(button)) {
-                console.log('[RH] Кнопка удалена, добавляем снова');
-                addButton();
+    // Инициализация
+    const init = () => {
+        createButton();
+        
+        // Периодически проверяем наличие кнопки
+        setInterval(() => {
+            if(!document.querySelector('.rh-reyohoho-btn')) {
+                createButton();
             }
-        };
-        setInterval(checkVisibility, 3000);
+        }, 5000);
     };
 
     // Запускаем после загрузки страницы
-    const init = () => {
-        // Первая попытка
-        addButton();
-
-        // Периодические проверки
-        const interval = setInterval(() => {
-            if(!document.querySelector('.rh-source-btn')) {
-                addButton();
-            }
-        }, 5000);
-
-        // Остановка после успешного добавления
-        setTimeout(() => clearInterval(interval), 30000);
-    };
-
-    // Старт
     if(document.readyState === 'complete') {
         setTimeout(init, 1000);
     } else {
