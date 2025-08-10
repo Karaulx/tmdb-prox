@@ -1,125 +1,160 @@
 (function(){
-    if(window.__rh_ultimate_final) return;
-    window.__rh_ultimate_final = true;
+    if(window.__rh_full_debug) return;
+    window.__rh_full_debug = true;
+    
+    console.log('[RH FULL DEBUG] Init');
 
-    console.log('[RH ULTIMATE FINAL] Initializing');
-
+    // Конфигурация
     const config = {
-        name: "Смотреть на RH",
-        icon: '▶️',
+        name: "▶️ RH Плеер",
         apiUrl: "https://api4.rhhhhhhh.live/play",
-        btnColor: "#FF2D2D"
+        btnId: "rh-debug-btn",
+        debug: true
     };
 
-    // 1. Улучшенный стиль кнопки
+    // 1. Стиль с гарантированной видимостью
     const style = document.createElement('style');
     style.textContent = `
-        .rh-ultimate-btn {
+        #${config.btnId} {
             position: fixed !important;
             right: 20px !important;
             bottom: 80px !important;
             z-index: 99999 !important;
-            background: ${config.btnColor} !important;
+            background: #FF0000 !important;
             color: white !important;
             padding: 12px 18px !important;
             border-radius: 8px !important;
             font-size: 16px !important;
             font-weight: bold !important;
             cursor: pointer !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 8px !important;
             border: none !important;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
         }
-        .rh-ultimate-btn:hover {
+        #${config.btnId}:hover {
             opacity: 0.9 !important;
         }
     `;
     document.head.appendChild(style);
 
-    // 2. Улучшенное получение данных карточки
+    // 2. Функция логирования
+    const log = (message) => {
+        if(config.debug) {
+            console.log(`[RH DEBUG] ${message}`);
+            // Дополнительно можно отправлять логи на сервер
+        }
+    };
+
+    // 3. Получение данных карточки
     const getCardData = () => {
-        // Все возможные способы получения данных
-        const sources = [
-            // Основной способ через Lampa
-            () => window.Lampa?.Storage?.get('card'),
-            
-            // Из URL
-            () => {
-                const match = window.location.href.match(/\/(movie|tv)\/(\d+)/);
-                return match ? {id: match[2], type: match[1]} : null;
-            },
-            
-            // Из meta-тегов
-            () => {
-                const meta = document.querySelector('meta[property="tmdb:id"]');
-                return meta ? {id: meta.content} : null;
+        try {
+            const card = window.Lampa?.Storage?.get('card') || {};
+            if(card.id) {
+                log(`Card data: ${JSON.stringify(card)}`);
+                return card;
             }
-        ];
-
-        // Пробуем все источники по очереди
-        for(const source of sources) {
-            try {
-                const data = source();
-                if(data?.id) return data;
-            } catch(e) {}
-        }
-        
-        return null;
-    };
-
-    // 3. Создание/обновление кнопки
-    const updateButton = () => {
-        const cardData = getCardData();
-        let btn = document.querySelector('.rh-ultimate-btn');
-
-        if(!btn) {
-            btn = document.createElement('button');
-            btn.className = 'rh-ultimate-btn';
-            document.body.appendChild(btn);
-        }
-
-        if(cardData?.id) {
-            btn.innerHTML = `${config.icon} ${config.name}`;
-            btn.onclick = () => {
-                const params = new URLSearchParams({
-                    tmdb_id: cardData.id,
-                    type: cardData.type || 'movie',
-                    title: cardData.title || ''
-                });
-                window.open(`${config.apiUrl}?${params}`, '_blank');
-            };
-            btn.style.display = 'flex';
-        } else {
-            btn.style.display = 'none';
+            
+            // Альтернативные методы
+            const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+            if(urlMatch) {
+                return {id: urlMatch[2], type: urlMatch[1]};
+            }
+            
+            return null;
+        } catch(e) {
+            log(`Error getting card: ${e.message}`);
+            return null;
         }
     };
 
-    // 4. Агрессивный мониторинг изменений
-    const startWatching = () => {
-        // Первая проверка
-        updateButton();
+    // 4. Создание кнопки с полной диагностикой
+    const createButton = () => {
+        // Удаляем старую кнопку если есть
+        const oldBtn = document.getElementById(config.btnId);
+        if(oldBtn) {
+            log('Removing old button');
+            oldBtn.remove();
+        }
+
+        // Создаем новую кнопку
+        const btn = document.createElement('button');
+        btn.id = config.btnId;
+        btn.textContent = config.name;
         
-        // Проверка при любых изменениях DOM
-        const observer = new MutationObserver(updateButton);
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true
+        // Вешаем несколько обработчиков для диагностики
+        btn.addEventListener('click', () => {
+            log('Button clicked (click event)');
+            handleClick();
         });
-
-        // Периодическая проверка
-        setInterval(updateButton, 2000);
+        
+        btn.onmousedown = () => log('Button mouse down');
+        btn.onmouseup = () => log('Button mouse up');
+        
+        document.body.appendChild(btn);
+        log('Button created');
     };
 
-    // 5. Запуск
-    if(document.readyState === 'complete') {
-        startWatching();
-    } else {
-        window.addEventListener('load', startWatching);
-    }
+    // 5. Обработчик клика с диагностикой
+    const handleClick = () => {
+        log('HandleClick started');
+        
+        const card = getCardData();
+        if(!card?.id) {
+            log('No card ID available');
+            alert('Данные карточки не загружены. Пожалуйста, откройте карточку полностью и попробуйте снова.');
+            return;
+        }
 
+        log(`Sending request with ID: ${card.id}`);
+        
+        // Формируем URL с timestamp для избежания кеширования
+        const params = new URLSearchParams({
+            tmdb_id: card.id,
+            type: card.type || 'movie',
+            _: Date.now() // Добавляем timestamp
+        });
+        
+        const url = `${config.apiUrl}?${params.toString()}`;
+        log(`Final URL: ${url}`);
+        
+        // Открываем в новом окне с принудительным обходом кеша
+        const newWindow = window.open('', '_blank');
+        if(newWindow) {
+            newWindow.location = url;
+            log('New window opened');
+        } else {
+            log('Window blocked by popup blocker');
+            alert('Пожалуйста, разрешите всплывающие окна для этого сайта');
+        }
+    };
+
+    // 6. Инициализация с несколькими проверками
+    const init = () => {
+        log('Initialization started');
+        
+        createButton();
+        
+        // Проверка каждые 2 секунды
+        const interval = setInterval(() => {
+            if(!document.getElementById(config.btnId)) {
+                log('Button missing, recreating...');
+                createButton();
+            }
+        }, 2000);
+        
+        // Остановка через 30 секунд
+        setTimeout(() => {
+            clearInterval(interval);
+            log('Initialization completed');
+        }, 30000);
+    };
+
+    // Запускаем при полной загрузке
+    if(document.readyState === 'complete') {
+        setTimeout(init, 500);
+    } else {
+        window.addEventListener('load', () => setTimeout(init, 500));
+    }
+    
     // Дублирующий запуск для надежности
-    setTimeout(startWatching, 3000);
+    setTimeout(init, 3000);
 })();
