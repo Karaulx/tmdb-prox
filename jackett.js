@@ -1,77 +1,41 @@
 (function() {
-  // Проверяем, не запускали ли уже плагин
-  if (window.__reyohoho_button_plugin) return;
-  window.__reyohoho_button_plugin = true;
+    'use strict';
+    
+    const fixUrl = url => url.replace(/([^:]\/)\/+/g, '$1');
 
-  // Создаем кнопку
-  const createButton = () => {
-    const btn = document.createElement('div');
-    btn.id
-не нужно кнопку, факт! источники открываются в лампе через кнопку "смотреть" - это кнопка лампы, и делай не по апи reyohoh он н еработает
-Вот готовый плагин для Lampa, который интегрируется с системой источников и работает без API ReYohoho:
-
-javascript
-(function() {
-  // Проверка дублирования
-  if (window.__lampa_reyohoho_plugin) return;
-  window.__lampa_reyohoho_plugin = true;
-
-  // Основной класс провайдера
-  class ReYohohoSource {
-    constructor() {
-      this.name = 'ReYohoho';
-      this.type = 'plugin';
-      this.supports = ['movie', 'tv']; // Поддерживаемые типы контента
-      this.icons = {
-        dark: 'https://reyohoho.github.io/favicon.ico',
-        light: 'https://reyohoho.github.io/favicon.ico'
-      };
-    }
-
-    async getUrl(params) {
-      try {
-        // Получаем TMDB ID из параметров
-        const tmdbId = params.tmdb_id;
-        const contentType = params.type || 'movie';
-
-        if (!tmdbId) throw new Error('TMDB ID не найден');
-
-        // Формируем URL для плеера ReYohoho
-        const playerUrl = `https://reyohoho.github.io/player.html?tmdb_id=${tmdbId}&type=${contentType}`;
-
-        // Для сериалов добавляем сезон и эпизод
-        if (contentType === 'tv') {
-          playerUrl += `&season=${params.season || 1}&episode=${params.episode || 1}`;
+    // 1. Перехват fetch с обработкой ошибок
+    const _originalFetch = window.fetch;
+    window.fetch = async function(input, init) {
+        try {
+            input = typeof input === 'string' ? fixUrl(input) : input;
+            
+            const response = await _originalFetch.call(this, input, {
+                ...init,
+                mode: 'no-cors',
+                headers: {
+                    ...(init?.headers || {}),
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) throw new Error('Network error');
+            return response;
+            
+        } catch (error) {
+            console.error('Fetch error:', error);
+            throw error;
         }
+    };
 
-        return {
-          url: playerUrl,
-          name: this.name,
-          title: params.title,
-          external: false // Используем внутренний плеер Lampa
+    // 2. Перехват XMLHttpRequest
+    if (window.XMLHttpRequest) {
+        const _originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function() {
+            arguments[1] = fixUrl(arguments[1]);
+            this.addEventListener('error', () => console.error('XHR error'));
+            return _originalOpen.apply(this, arguments);
         };
-
-      } catch (e) {
-        console.error('ReYohohoSource error:', e);
-        return null;
-      }
     }
-  }
 
-  // Регистрация провайдера
-  const registerProvider = () => {
-    if (window.plugin_provider) {
-      window.plugin_provider(new ReYohohoSource());
-      console.log('ReYohoho provider registered');
-    } else {
-      console.warn('Lampa plugin system not available');
-    }
-  };
-
-  // Автоматическая регистрация при загрузке
-  if (document.readyState === 'complete') {
-    registerProvider();
-  } else {
-    window.addEventListener('load', registerProvider);
-  }
+    console.log('[Network Fixer] Activated');
 })();
