@@ -1,53 +1,51 @@
 (function() {
     'use strict';
 
-    // Защита от повторной загрузки
-    if (window.ReYohohoPluginReady) return;
-    window.ReYohohoPluginReady = true;
+    // Защита от дублирования (как в torrents.js)
+    if (window.plugin_reyohoho_ready) return;
+    window.plugin_reyohoho_ready = true;
 
-    function initPlugin() {
-        // Основная функция воспроизведения (ваш оригинальный код)
-        async function handleReYohohoPlay(data) {
-            const movie = data.movie;
-            const type = movie.name ? 'tv' : 'movie';
+    // Основная функция (аналог button_click из torrents.js)
+    function reyohoho_play(data) {
+        const movie = data.movie;
+        const type = movie.name ? 'tv' : 'movie';
+        const id = movie.tmdb_id || movie.kinopoisk_id;
+        
+        try {
+            const contentUrl = `https://reyohoho.github.io/${type}/${id}`;
+            const html = await fetch(contentUrl).then(r => r.text());
+            const videoUrl = extractVideoUrl(html);
             
-            try {
-                const contentUrl = `https://reyohoho.github.io/${type}/${movie.tmdb_id || movie.kinopoisk_id}`;
-                const html = await fetch(contentUrl).then(r => r.text());
-                const videoUrl = extractVideoUrl(html);
-                
-                if (!videoUrl) throw new Error('Ссылка на видео не найдена');
-                
-                Lampa.Player.play(videoUrl, {
-                    title: movie.title || movie.name,
-                    external: false,
-                    headers: {
-                        'Referer': 'https://reyohoho.github.io/',
-                        'Origin': 'https://reyohoho.github.io'
-                    }
-                });
-                
-            } catch (error) {
-                console.error('ReYohoho error:', error);
-                Lampa.Noty.show('Не удалось начать воспроизведение');
-                
-                const playerUrl = `https://reyohoho.github.io/player.html?id=${movie.tmdb_id || movie.kinopoisk_id}&type=${type}`;
-                Lampa.Player.play(playerUrl, {
-                    title: movie.title || movie.name,
-                    external: false
-                });
-            }
+            if (!videoUrl) throw new Error('Ссылка не найдена');
+            
+            Lampa.Player.play({
+                url: videoUrl,
+                title: movie.title || movie.name,
+                external: false,
+                source: 'reyohoho',
+                headers: {
+                    'Referer': contentUrl,
+                    'Origin': 'https://reyohoho.github.io'
+                }
+            });
+        } catch (e) {
+            console.error(e);
+            Lampa.Noty.show('Ошибка ReYohoho');
         }
+    }
 
-        function extractVideoUrl(html) {
-            const regex = /(https?:\/\/[^\s"'<>]+\.(m3u8|mp4|mkv|webm)[^\s"'<>]*)/i;
-            const match = html.match(regex);
-            return match ? match[0] : null;
-        }
+    // Функция извлечения URL (без изменений)
+    function extractVideoUrl(html) {
+        const regex = /(https?:\/\/[^\s"'<>]+\.(m3u8|mp4|mkv|webm)[^\s"'<>]*)/i;
+        const match = html.match(regex);
+        return match ? match[0] : null;
+    }
 
-        // Добавляем кнопку в интерфейс (аналогично torrents)
+    // Точная копия логики добавления кнопки из torrents.js
+    function addButton() {
         Lampa.Listener.follow('full', function(e) {
             if (e.type == 'complite') {
+                // 1. Берем HTML кнопки из torrents.js (адаптируем только иконку)
                 const button = `
                     <div class="full-start__button view--reyohoho">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
@@ -57,49 +55,36 @@
                     </div>
                 `;
                 
+                // 2. Полностью копируем логику вставки
                 const btn = $(button);
                 btn.on('hover:enter', function() {
-                    handleReYohohoPlay(e.data);
+                    reyohoho_play(e.data);
                 });
                 
+                // 3. Ключевая строка - вставка ТОЧНО как в torrents.js
                 if (e.data && e.object) {
-                    e.object.activity.render().find('.full-start__buttons').append(btn);
+                    e.object.activity.render().find('.view--torrent').last().after(btn);
                 }
-            }
-        });
-
-        // Регистрируем обработчик плеера
-        Lampa.Player.addHandler({
-            name: 'reyohoho',
-            title: 'ReYohoho',
-            priority: 10,
-            handler: handleReYohohoPlay
-        });
-
-        // Добавляем настройки (если нужно)
-        Lampa.SettingsApi.addParam({
-            component: 'reyohoho',
-            param: {
-                name: 'reyohoho_enabled',
-                type: 'select',
-                values: ['true', 'false'],
-                value: 'true'
-            },
-            field: {
-                name: 'Включить ReYohoho',
-                description: 'Активировать источник ReYohoho'
             }
         });
     }
 
-    // Запускаем плагин
+    // Инициализация как в torrents.js
     if (window.appready) {
-        initPlugin();
+        addButton();
     } else {
         Lampa.Listener.follow('app', function(e) {
-            if (e.type == 'ready') {
-                initPlugin();
-            }
+            if (e.type == 'ready') addButton();
+        });
+    }
+
+    // Регистрация обработчика (если нужно)
+    if (Lampa.Player.handler?.add) {
+        Lampa.Player.handler.add({
+            name: 'reyohoho',
+            title: 'ReYohoho',
+            priority: 10,
+            handler: reyohoho_play
         });
     }
 })();
