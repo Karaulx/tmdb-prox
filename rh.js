@@ -1,84 +1,103 @@
 (function(){
-    // Защита от дублирования
-    if(window._rh_plugin_v3_loaded) return;
-    window._rh_plugin_v3_loaded = true;
+    // Уникальный идентификатор для защиты от дублирования
+    if(window._rh_final_solution) return;
+    window._rh_final_solution = true;
 
-    console.log('[RHv3] Plugin initialization started');
+    console.log('[RH FINAL] Initializing plugin');
 
-    const waitLampa = (callback) => {
-        if(window.Lampa && window.Lampa.API && window.Lampa.Plugin) {
-            console.log('[RHv3] Lampa API ready');
-            callback();
+    // Альтернативный метод проверки готовности Lampa
+    function checkLampa() {
+        // Проверяем разные варианты доступа к Lampa
+        const lampa = window.Lampa || window.top.Lampa || window.parent.Lampa;
+        if(lampa && (lampa.API || lampa.Plugin)) {
+            console.log('[RH FINAL] Lampa found');
+            initPlugin(lampa);
+            return true;
         }
-        else {
-            console.log('[RHv3] Waiting for Lampa...');
-            setTimeout(() => waitLampa(callback), 100);
-        }
-    };
+        return false;
+    }
 
-    waitLampa(() => {
-        console.log('[RHv3] Registering source');
+    // Инициализация плагина
+    function initPlugin(lampa) {
+        console.log('[RH FINAL] Registering plugin');
         
-        class RhSource {
-            constructor(){
-                this.name = "RH Source";
-                this.id = "rh_source_v3";
-                this.version = "3.3";
-                this.type = "universal"; // Работает для фильмов и сериалов
+        class RhFinalSource {
+            constructor() {
+                this.name = "RH Final Source";
+                this.id = "rh_final_source";
+                this.version = "4.0";
+                this.type = "universal";
                 this.priority = 1;
             }
-            
+
             search(query, tmdb_id, callback) {
-                console.log('[RHv3] Search request:', {query, tmdb_id});
+                console.log('[RH FINAL] Search:', query, tmdb_id);
                 
-                // Реальный запрос к API
-                fetch(`https://api4.rhhhhhhh.live/get_movie?tmdb_id=${tmdb_id}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        const results = data.links.map(item => ({
-                            title: item.title || query,
-                            url: item.url, // Прямая ссылка на видео
-                            quality: item.quality || '1080p',
-                            translation: item.translation || 'оригинал',
-                            type: 'video',
-                            tmdb_id: tmdb_id
-                        }));
-                        callback(results);
-                    })
-                    .catch(e => {
-                        console.error('[RHv3] API error:', e);
-                        callback([]); // Возвращаем пустой массив при ошибке
-                    });
+                // Тестовые данные (замените на реальный запрос)
+                callback([{
+                    title: `${query} [RH TEST]`,
+                    url: `https://api4.rhhhhhhh.live/stream?tmdb=${tmdb_id}`,
+                    quality: "1080p",
+                    translation: "оригинал",
+                    type: "video",
+                    tmdb_id: tmdb_id
+                }]);
             }
-            
+
             sources(item, callback) {
                 this.search(item.title, item.id, callback);
             }
         }
 
-        // Регистрация плагина
         try {
-            const plugin = new RhSource();
-            Lampa.Plugin.add(plugin);
-            console.log('[RHv3] Source registered successfully');
-            
-            // Принудительное обновление кеша
-            if(Lampa.API.pluginUpdate) Lampa.API.pluginUpdate();
-            
-            // Проверка через 3 секунды
+            // Совместимость со старыми и новыми версиями Lampa
+            if(lampa.Plugin && lampa.Plugin.add) {
+                lampa.Plugin.add(new RhFinalSource());
+                console.log('[RH FINAL] Plugin registered via Plugin.add()');
+            } 
+            else if(lampa.Plugins && lampa.Plugins.push) {
+                lampa.Plugins.push(new RhFinalSource());
+                console.log('[RH FINAL] Plugin registered via Plugins.push()');
+            }
+            else {
+                throw new Error('No compatible plugin registration method found');
+            }
+
+            // Принудительное обновление
+            if(lampa.API && lampa.API.pluginUpdate) {
+                lampa.API.pluginUpdate();
+                console.log('[RH FINAL] Cache updated');
+            }
+
+            // Проверка через 5 секунд
             setTimeout(() => {
-                const found = Lampa.Plugin.list().find(p => p.id === 'rh_source_v3');
-                console.log('[RHv3] Verification:', found ? 'SUCCESS' : 'FAILED');
+                const plugins = lampa.Plugin ? lampa.Plugin.list() : (lampa.Plugins || []);
+                const found = plugins.find(p => p.id === 'rh_final_source');
+                console.log('[RH FINAL] Verification:', found ? 'SUCCESS' : 'FAILED');
+                
                 if(found) {
-                    // Тестовый поиск
-                    found.search('Test', 123, (results) => {
-                        console.log('[RHv3] Test search results:', results);
-                    });
+                    found.search('Test', 123, console.log);
                 }
-            }, 3000);
+            }, 5000);
         }
         catch(e) {
-            console.error('[RHv3] Registration failed:', e);
+            console.error('[RH FINAL] Registration error:', e);
         }
-    });
+    }
+
+    // Пытаемся сразу найти Lampa
+    if(!checkLampa()) {
+        // Если не найдено, устанавливаем интервал проверки
+        const interval = setInterval(() => {
+            if(checkLampa()) {
+                clearInterval(interval);
+            }
+        }, 100);
+        
+        // Таймаут через 10 секунд
+        setTimeout(() => {
+            clearInterval(interval);
+            console.warn('[RH FINAL] Lampa not found after 10 seconds');
+        }, 10000);
+    }
 })();
