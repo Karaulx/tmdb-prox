@@ -1,12 +1,13 @@
 (function() {
-    // 1. Проверяем, не запускали ли скрипт ранее
-    if (window.__rh_super_button) return;
-    window.__rh_super_button = true;
+    // 1. Защита от повторного запуска
+    if (window.__rh_ultra_button) return;
+    window.__rh_ultra_button = true;
+    
     console.log('[RH] Инициализация...');
 
-    // 2. Создаем кнопку с вашим стилем
+    // 2. Создаем кнопку (ваш стиль)
     const btn = document.createElement('button');
-    btn.id = 'rh-super-button';
+    btn.id = 'rh-ultra-button';
     btn.style.cssText = `
         position: fixed !important;
         right: 20px !important;
@@ -27,100 +28,110 @@
     `;
     btn.innerHTML = '<span style="font-size:20px">▶️</span> RH Плеер';
 
-    // 3. Функция для показа диагностики
-    function showDebugInfo() {
-        let debug = "=== RH DEBUG ===\n";
-        
-        // Проверяем URL
-        const url = window.location.href;
-        debug += `URL: ${url}\n`;
-        
-        // Пытаемся найти ID в URL
-        const urlMatch = url.match(/\/(movie|tv)\/(\d+)/);
-        if (urlMatch) {
-            debug += `✅ Нашли ID в URL: ${urlMatch[2]} (${urlMatch[1]})\n`;
-        } else {
-            debug += `❌ Не нашли ID в URL\n`;
-        }
-        
-        // Проверяем Lampa
-        if (window.Lampa) {
-            debug += "✅ Lampa доступна\n";
-            try {
-                const card = window.Lampa.Storage.get('card');
-                if (card?.id) {
-                    debug += `✅ Нашли карточку: ID=${card.id}, тип=${card.type}\n`;
-                } else {
-                    debug += "❌ Нет данных карточки в Storage\n";
-                }
-            } catch (e) {
-                debug += `❌ Ошибка Lampa: ${e.message}\n`;
+    // 3. Безопасное получение данных
+    function getContentInfo() {
+        try {
+            // Способ 1: Из URL
+            const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+            if (urlMatch) {
+                return {
+                    id: urlMatch[2],
+                    type: urlMatch[1],
+                    source: 'URL'
+                };
             }
-        } else {
-            debug += "❌ Lampa не найдена\n";
+
+            // Способ 2: Из Lampa (с полной защитой)
+            if (typeof window.Lampa !== 'undefined') {
+                try {
+                    const card = window.Lampa.Storage.get('card');
+                    if (card && card.id) {
+                        return {
+                            id: card.id,
+                            type: card.type || 'movie',
+                            source: 'Lampa'
+                        };
+                    }
+                } catch (e) {
+                    console.error('[RH] Lampa Error:', e);
+                }
+            }
+
+            return null;
+        } catch (e) {
+            console.error('[RH] Global Error:', e);
+            return null;
         }
-        
-        return debug;
     }
 
-    // 4. Обработчик клика
+    // 4. Супер-защищенный обработчик клика
     btn.onclick = function() {
-        const debugInfo = showDebugInfo();
-        
-        // Пытаемся получить ID
-        let contentId, contentType;
-        
-        // Сначала из URL
-        const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
-        if (urlMatch) {
-            contentId = urlMatch[2];
-            contentType = urlMatch[1];
-        } 
-        // Затем из Lampa
-        else if (window.Lampa) {
+        try {
+            const content = getContentInfo();
+            
+            if (!content) {
+                alert('❌ Контент не найден!\n\n1. Полностью откройте карточку\n2. Дождитесь загрузки\n3. Обновите страницу (F5)');
+                return;
+            }
+
+            console.log('[RH] Content found:', content);
+            const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${content.id}&type=${content.type}`;
+            
+            // Пробуем 3 способа открытия
             try {
-                const card = window.Lampa.Storage.get('card');
-                if (card?.id) {
-                    contentId = card.id;
-                    contentType = card.type || 'movie';
+                // Способ 1: Обычное окно
+                const newWindow = window.open('', '_blank');
+                if (newWindow) {
+                    newWindow.location.href = playUrl;
+                } else {
+                    // Способ 2: Если блокирует popup
+                    window.location.href = playUrl;
                 }
             } catch (e) {
-                console.error('Lampa error:', e);
+                // Способ 3: Через iframe
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = playUrl;
+                document.body.appendChild(iframe);
+                setTimeout(() => document.body.removeChild(iframe), 1000);
             }
-        }
-        
-        if (contentId) {
-            const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${contentId}&type=${contentType}`;
-            debugInfo += `\nПытаемся открыть: ${playUrl}`;
             
-            try {
-                window.open(playUrl, '_blank');
-                debugInfo += "\n✅ Команда window.open выполнена";
-            } catch (e) {
-                debugInfo += `\n❌ Ошибка при открытии: ${e.message}`;
-            }
-        } else {
-            debugInfo += "\n❌ Не удалось определить ID контента";
+        } catch (e) {
+            console.error('[RH] Click Error:', e);
+            alert('⚠️ Неожиданная ошибка!\n\n' + e.message);
         }
-        
-        alert(debugInfo);
     };
 
-    // 5. Добавляем кнопку на страницу
-    function addButton() {
-        if (!document.getElementById('rh-super-button')) {
-            document.body.appendChild(btn);
-            console.log('[RH] Кнопка добавлена');
+    // 5. Добавляем кнопку с защитой
+    function safeAppend() {
+        try {
+            if (!document.getElementById('rh-ultra-button')) {
+                document.body.appendChild(btn);
+                console.log('[RH] Кнопка добавлена');
+            }
+        } catch (e) {
+            console.error('[RH] Append Error:', e);
         }
     }
 
-    // 6. Запускаем
+    // 6. Запуск
     if (document.readyState === 'complete') {
-        addButton();
+        safeAppend();
     } else {
-        window.addEventListener('load', addButton);
+        window.addEventListener('load', safeAppend);
     }
 
-    // 7. Защита от удаления
-    setInterval(addButton, 1000);
+    // 7. Защита от удаления (безопасная версия)
+    const safeObserver = new MutationObserver(() => {
+        try {
+            if (!document.getElementById('rh-ultra-button')) {
+                safeAppend();
+            }
+        } catch (e) {
+            console.error('[RH] Observer Error:', e);
+        }
+    });
+    safeObserver.observe(document.body, { childList: true, subtree: true });
+
+    console.log('[RH] Готово!');
 })();
