@@ -1,111 +1,132 @@
 (function(){
-    if(window.__rh_perfect_loader) return;
-    window.__rh_perfect_loader = true;
+    if(window.__rh_absolute_loader) return;
+    window.__rh_absolute_loader = true;
 
-    console.log('[RH PERFECT LOADER] Initializing');
+    console.log('[RH ABSOLUTE LOADER] Starting guaranteed integration');
 
     // 1. Конфигурация
     const config = {
         name: "▶️ RH Плеер",
-        apiBase: "https://api4.rhhhhhhh.live",
-        btnId: "rh-perfect-btn",
-        retryDelay: 500,
-        maxRetries: 20
+        apiUrl: "https://api4.rhhhhhhh.live/play",
+        btnId: "rh-absolute-btn",
+        maxWaitTime: 10000 // 10 секунд максимум
     };
 
-    // 2. Создаем кнопку в стиле Lampa
+    // 2. Создаем кнопку с гарантированным отображением
     const createButton = () => {
-        const btn = document.createElement('div');
-        btn.id = config.btnId;
-        btn.className = 'selector__item'; // Используем классы Lampa
-        btn.innerHTML = `
-            <div class="selector__item-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FF0000">
-                    <path d="M8 5v14l11-7z"/>
-                </svg>
-            </div>
-            <div class="selector__item-title">${config.name}</div>
-        `;
-        btn.style.cssText = 'margin: 5px; cursor: pointer;';
+        let btn = document.getElementById(config.btnId);
+        if(!btn) {
+            btn = document.createElement('div');
+            btn.id = config.btnId;
+            btn.style.cssText = `
+                position: fixed !important;
+                right: 20px !important;
+                bottom: 80px !important;
+                z-index: 2147483647 !important;
+                background: linear-gradient(135deg, #FF0000, #FF4500) !important;
+                color: white !important;
+                padding: 12px 24px !important;
+                border-radius: 12px !important;
+                font-size: 16px !important;
+                font-weight: bold !important;
+                cursor: pointer !important;
+                border: none !important;
+                box-shadow: 0 6px 24px rgba(255, 0, 0, 0.4) !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
+            `;
+            btn.innerHTML = `<span style="font-size:20px">▶️</span> ${config.name}`;
+            document.body.appendChild(btn);
+        }
         return btn;
     };
 
-    // 3. Получаем точные данные карточки
+    // 3. Получаем данные карточки агрессивным методом
     const getCardData = () => {
-        try {
-            // Основной способ через Lampa
-            const card = window.Lampa.Storage.get('card');
-            if(card?.id) {
-                return {
-                    id: card.id,
-                    type: card.type || 'movie',
-                    season: card.season,
-                    episode: card.episode,
-                    title: card.title || ''
-                };
+        // Все возможные способы получения данных
+        const sources = [
+            () => window.Lampa?.Storage?.get('card'),
+            () => {
+                const match = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+                return match ? {id: match[2], type: match[1]} : null;
+            },
+            () => {
+                const meta = document.querySelector('meta[property="tmdb:id"]');
+                return meta ? {id: meta.content} : null;
+            },
+            () => {
+                const player = document.querySelector('.player__container');
+                return player?.dataset?.id ? {id: player.dataset.id} : null;
             }
-        } catch(e) {
-            console.error('Lampa Storage error:', e);
+        ];
+
+        for(let source of sources) {
+            try {
+                const data = source();
+                if(data?.id) {
+                    return {
+                        id: data.id,
+                        type: data.type || 'movie',
+                        title: data.title || ''
+                    };
+                }
+            } catch(e) {
+                console.error('Error in source:', e);
+            }
         }
         return null;
     };
 
-    // 4. Формируем правильный URL для Lampa Player
-    const getLampaPlayerUrl = (card) => {
-        if(!card) return null;
-
-        // Формат для Lampa:
-        // {url: string, title: string, referer: string}
-        return {
-            url: `${config.apiBase}/play?tmdb_id=${card.id}&type=${card.type}` +
-                 (card.season ? `&season=${card.season}` : '') +
-                 (card.episode ? `&episode=${card.episode}` : ''),
-            title: card.title,
-            referer: window.location.href
-        };
-    };
-
-    // 5. Встраиваем кнопку в интерфейс Lampa
-    const init = (retryCount = 0) => {
+    // 4. Основная функция
+    const init = (startTime = Date.now()) => {
+        const btn = createButton();
         const card = getCardData();
-        const playerData = getLampaPlayerUrl(card);
 
-        // Ищем стандартный контейнер кнопок
-        const container = document.querySelector('.selector__items, .full__buttons');
-        
-        if(container && playerData) {
-            const btn = createButton();
-            
-            // Обработчик клика для Lampa Player
+        if(card?.id) {
+            // Настройка кнопки при успехе
             btn.onclick = () => {
-                console.log('Starting player with:', playerData);
-                window.Lampa.Player.play({
-                    title: playerData.title,
-                    files: [{
-                        title: playerData.title,
-                        file: playerData.url,
-                        type: 'video/mp4' // Или другой тип
-                    }]
+                const params = new URLSearchParams({
+                    tmdb_id: card.id,
+                    type: card.type,
+                    title: encodeURIComponent(card.title),
+                    _: Date.now()
                 });
+                
+                // Запуск через Lampa Player если доступен
+                if(window.Lampa?.Player?.play) {
+                    window.Lampa.Player.play({
+                        title: card.title,
+                        files: [{
+                            title: card.title,
+                            file: `${config.apiUrl}?${params}`,
+                            type: 'video/mp4'
+                        }]
+                    });
+                } else {
+                    window.open(`${config.apiUrl}?${params}`, '_blank');
+                }
             };
-
-            // Вставляем кнопку
-            container.appendChild(btn);
-            console.log('Button successfully added');
+            
+            console.log('Successfully initialized with ID:', card.id);
             return;
         }
 
-        if(retryCount < config.maxRetries) {
-            setTimeout(() => init(retryCount + 1), config.retryDelay);
+        if(Date.now() - startTime < config.maxWaitTime) {
+            setTimeout(() => init(startTime), 500);
         } else {
-            console.error('Failed to initialize after retries');
+            btn.onclick = () => alert('Не удалось загрузить данные. Пожалуйста:\n1. Полностью откройте карточку\n2. Обновите страницу (Ctrl+F5)');
+            console.error('Failed to initialize after timeout');
         }
     };
 
-    // 6. Запускаем
+    // 5. Запуск
     if(document.readyState === 'complete') {
-        setTimeout(init, 1000);
+        setTimeout(init, 500);
     } else {
-        window.addEventListener('load', () => setTimeout(init, 1000));
+        window.addEventListener('load', () => setTimeout(init, 500));
     }
+
+    // Дублирующий запуск через 3 секунды
+    setTimeout(init, 3000);
 })();
