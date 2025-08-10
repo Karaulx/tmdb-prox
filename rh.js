@@ -1,79 +1,93 @@
 (function() {
-    if (window.__reyohoho_stable_plugin) return;
-    window.__reyohoho_stable_plugin = true;
+    'use strict';
 
-    class ReYohohoProvider {
-        constructor() {
-            this.name = "ReYohoho";
-            this.id = "reyohoho_source";
-            this.type = "plugin";
-            this.icon = "https://reyohoho.github.io/favicon.ico";
-            this.version = "1.2";
-            this.supports = ["movie", "tv"];
-        }
+    function startPlugin() {
+        window.plugin_reyohoho_ready = true;
 
-        async getUrl(params) {
-            try {
-                const id = params.tmdb_id || params.kinopoisk_id;
-                if (!id) throw new Error("ID контента не найден");
-
-                // Формируем прямую ссылку на плеер
-                const url = this.buildPlayerUrl(id, params);
-                
-                return {
-                    url: url,
-                    name: this.name,
-                    title: params.title || "ReYohoho",
-                    external: false,
-                    headers: {
-                        "Referer": "https://reyohoho.github.io/",
-                        "Origin": "https://reyohoho.github.io"
+        function add() {
+            // Добавляем красивую кнопку в интерфейс
+            Lampa.Listener.follow('full', function(e) {
+                if (e.type == 'complite') {
+                    var button = `
+                        <div class="full-start__button view--reyohoho">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                            </svg>
+                            <span>Смотреть на ReYohoho</span>
+                        </div>`;
+                    
+                    var btn = $(button);
+                    btn.on('hover:enter', function() {
+                        handleReYohohoPlay(e.data);
+                    });
+                    
+                    if (e.data && e.object) {
+                        e.object.activity.render().find('.view--torrent').last().after(btn);
                     }
-                };
+                }
+            });
 
-            } catch (e) {
-                console.error("ReYohoho error:", e);
+            // Функция обработки воспроизведения
+            async function handleReYohohoPlay(data) {
+                const movie = data.movie;
+                const type = movie.name ? 'tv' : 'movie';
+                
+                try {
+                    // Формируем URL для парсинга
+                    const contentUrl = `https://reyohoho.github.io/${type}/${movie.tmdb_id || movie.kinopoisk_id}`;
+                    
+                    // Получаем HTML страницы
+                    const html = await fetch(contentUrl).then(r => r.text());
+                    
+                    // Извлекаем ссылку на видео
+                    const videoUrl = extractVideoUrl(html);
+                    if (!videoUrl) throw new Error('Ссылка на видео не найдена');
+                    
+                    // Запускаем плеер
+                    Lampa.Player.play(videoUrl, {
+                        title: movie.title || movie.name,
+                        external: false,
+                        headers: {
+                            'Referer': 'https://reyohoho.github.io/',
+                            'Origin': 'https://reyohoho.github.io'
+                        }
+                    });
+                    
+                } catch (error) {
+                    console.error('ReYohoho error:', error);
+                    Lampa.Noty.show('Не удалось начать воспроизведение');
+                    
+                    // Fallback: пытаемся открыть через iframe
+                    const playerUrl = `https://reyohoho.github.io/player.html?id=${movie.tmdb_id || movie.kinopoisk_id}&type=${type}`;
+                    Lampa.Player.play(playerUrl, {
+                        title: movie.title || movie.name,
+                        external: false
+                    });
+                }
+            }
+
+            // Функция извлечения ссылки на видео
+            function extractVideoUrl(html) {
+                // Ищем m3u8 ссылку
+                const m3u8Match = html.match(/https?:\/\/[^\s"']+\.m3u8[^\s"']*/i);
+                if (m3u8Match) return m3u8Match[0];
+                
+                // Ищем iframe с видео
+                const iframeMatch = html.match(/<iframe[^>]+src="([^"]+)"/i);
+                if (iframeMatch) return iframeMatch[1];
+                
                 return null;
             }
         }
 
-        buildPlayerUrl(id, params) {
-            let url = `https://reyohoho.github.io/player.html?id=${id}`;
-            
-            if (params.type === 'tv') {
-                url += `&season=${params.season || 1}&episode=${params.episode || 1}`;
-            } else {
-                url += '&type=movie';
-            }
-
-            return url;
-        }
-    }
-
-    // Совместимость со всеми версиями Lampa
-    function register() {
-        // Для новых версий (4.x+)
-        if (typeof Lampa !== 'undefined' && Lampa.Plugins) {
-            Lampa.Plugins.add({
-                name: "ReYohoho",
-                component: new ReYohohoProvider()
+        // Запуск плагина
+        if (window.appready) add(); 
+        else {
+            Lampa.Listener.follow('app', function(e) {
+                if (e.type == 'ready') add();
             });
-        } 
-        // Для версий 3.x
-        else if (typeof window.plugin_provider === 'function') {
-            window.plugin_provider(new ReYohohoProvider());
-        }
-        // Для версий 2.x
-        else if (typeof window.extensions_provider !== 'undefined') {
-            window.extensions_provider = window.extensions_provider || [];
-            window.extensions_provider.push(new ReYohohoProvider());
         }
     }
 
-    // Автоматическая регистрация
-    if (document.readyState === 'complete') {
-        register();
-    } else {
-        window.addEventListener('load', register);
-    }
+    if (!window.plugin_reyohoho_ready) startPlugin();
 })();
