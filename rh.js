@@ -1,114 +1,92 @@
 (function(){
-    // Защита от повторного выполнения
-    if(window._rh_ultimate_plugin) return;
-    window._rh_ultimate_plugin = true;
+    // Защита от дублирования
+    if(window._rh_custom_plugin) return;
+    window._rh_custom_plugin = true;
 
-    console.log('[RH ULTIMATE] Plugin initialization started');
+    console.log('[RH CUSTOM] Plugin initialization');
 
-    // Универсальный метод ожидания Lampa
-    function waitForLampa(callback, attempts = 0) {
-        if(window.Lampa) {
-            // Специальная обработка для разных версий Lampa
-            if(window.Lampa.Plugins && (Array.isArray(window.Lampa.Plugins) || typeof window.Lampa.Plugins === 'object')) {
-                callback();
-            } else if(attempts < 10) {
-                setTimeout(() => waitForLampa(callback, attempts + 1), 200);
-            } else {
-                console.error('[RH ULTIMATE] Lampa.Plugins not found or invalid');
-            }
-        } else if(attempts < 20) {
-            setTimeout(() => waitForLampa(callback, attempts + 1), 100);
+    // Ждем полной загрузки Lampa
+    function waitForLampa(callback) {
+        if(window.Lampa && window.Lampa.Plugins) {
+            callback();
         } else {
-            console.error('[RH ULTIMATE] Lampa not found');
+            setTimeout(() => waitForLampa(callback), 100);
         }
     }
 
     waitForLampa(() => {
-        console.log('[RH ULTIMATE] Lampa ready, creating plugin');
+        console.log('[RH CUSTOM] Lampa ready');
 
-        // Создаем наш плагин
-        const RhUltimatePlugin = {
-            name: "RH Ultimate Source",
-            id: "rh_ultimate",
-            type: "universal",
-            version: "2.0",
-            
-            // Универсальный метод поиска
-            search: function(query, tmdb_id, callback) {
-                console.log('[RH ULTIMATE] Smart search started:', query, tmdb_id);
-                
-                // Делаем запрос к вашему API
-                fetch(`https://reyohoho-gitlab.vercel.app/api/search?` + new URLSearchParams({
-                    q: query,
-                    tmdb_id: tmdb_id,
-                    clean_title: query.replace(/[^\w\sа-яА-Я]/gi, '').trim().toLowerCase()
-                }))
-                .then(response => {
-                    if(!response.ok) throw new Error('API response: ' + response.status);
-                    return response.json();
-                })
-                .then(data => {
-                    // Форматируем ответ для Lampa
-                    const results = Array.isArray(data) ? data.map(item => ({
-                        title: item.title || query,
-                        url: item.url,
-                        quality: item.quality || 'HD',
-                        tmdb_id: tmdb_id,
-                        translation: item.translation || 'оригинал',
-                        // Дополнительные поля для совместимости
-                        file: item.url,
-                        quality: item.quality || 'HD',
-                        type: 'video'
-                    })) : [];
+        // Создаем кастомный источник
+        const CustomSource = {
+            name: "Ваш сайт", // Название, которое будет отображаться
+            id: "your_site_source",
+            type: "movie", // Может быть "movie" или "tv"
+            version: "1.0",
 
-                    console.log('[RH ULTIMATE] Found items:', results.length);
-                    callback(results);
-                })
-                .catch(error => {
-                    console.error('[RH ULTIMATE] Search error:', error);
-                    callback([]); // Всегда возвращаем массив
-                });
-            },
-            
-            // Альтернативный метод для новых версий Lampa
+            // Основной метод для загрузки контента
             sources: function(item, callback) {
-                this.search(item.title, item.id, callback);
+                console.log('[RH CUSTOM] Loading for:', item.title);
+
+                // Формируем запрос к вашему API
+                const apiUrl = new URL('https://reyohoho-gitlab.vercel.app/api/search');
+                apiUrl.searchParams.set('q', item.title);
+                apiUrl.searchParams.set('tmdb_id', item.id);
+                apiUrl.searchParams.set('year', item.year || '');
+
+                fetch(apiUrl)
+                    .then(response => {
+                        if(!response.ok) throw new Error('HTTP ' + response.status);
+                        return response.json();
+                    })
+                    .then(data => {
+                        // Форматируем ответ для Lampa
+                        const sources = Array.isArray(data) ? data.map(source => ({
+                            title: source.title || item.title,
+                            file: source.url,
+                            quality: source.quality || 'HD',
+                            // Дополнительные параметры для отображения
+                            provider: 'Ваш сайт', // Будет показан в интерфейсе
+                            external: {
+                                name: 'Ваш сайт',
+                                link: 'https://reyohoho-gitlab.vercel.app' // Ссылка на ваш сайт
+                            }
+                        })) : [];
+
+                        console.log('[RH CUSTOM] Found sources:', sources.length);
+                        callback(sources);
+                    })
+                    .catch(error => {
+                        console.error('[RH CUSTOM] Error:', error);
+                        callback([]);
+                    });
+            },
+
+            // Метод для отображения в интерфейсе
+            display: {
+                name: "Ваш сайт",
+                icon: "https://reyohoho-gitlab.vercel.app/favicon.ico" // Иконка для отображения
             }
         };
 
-        // Универсальный метод регистрации плагина
+        // Регистрируем источник
         try {
-            if(Array.isArray(window.Lampa.Plugins)) {
-                // Для старых версий (Lampa.Plugins - массив)
-                window.Lampa.Plugins.push(RhUltimatePlugin);
-            } else if(typeof window.Lampa.Plugins === 'object') {
-                // Для новых версий (Lampa.Plugins - объект)
-                window.Lampa.Plugins.register(RhUltimatePlugin);
-            } else {
-                // Экстренный fallback
-                window.Lampa.Plugins = [RhUltimatePlugin];
+            // Для новых версий Lampa
+            if(window.Lampa.Plugins.register) {
+                window.Lampa.Plugins.register(CustomSource);
+            } 
+            // Для старых версий
+            else if(Array.isArray(window.Lampa.Plugins)) {
+                window.Lampa.Plugins.push(CustomSource);
             }
-            console.log('[RH ULTIMATE] Plugin registered successfully');
+            // Экстренный fallback
+            else {
+                window.Lampa.Plugins = [CustomSource];
+            }
+
+            console.log('[RH CUSTOM] Source registered successfully');
         } catch(e) {
-            console.error('[RH ULTIMATE] Registration failed:', e);
-            
-            // Последняя попытка
-            if(!window.Lampa.Plugins) window.Lampa.Plugins = [];
-            window.Lampa.Plugins.push(RhUltimatePlugin);
+            console.error('[RH CUSTOM] Registration error:', e);
         }
     });
-
-    // Дополнительный таймаут для самых старых версий
-    setTimeout(() => {
-        if(!window._rh_ultimate_registered && window.Lampa) {
-            console.log('[RH ULTIMATE] Fallback registration');
-            if(!window.Lampa.Plugins) window.Lampa.Plugins = [];
-            window.Lampa.Plugins.push({
-                name: "RH Ultimate Source",
-                id: "rh_ultimate",
-                search: function(q, id, cb) { cb([]); },
-                sources: function(i, cb) { cb({movie: [], tv: []}); }
-            });
-        }
-    }, 3000);
 })();
