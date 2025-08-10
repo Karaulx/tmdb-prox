@@ -1,159 +1,147 @@
 (function(){
-    if(window.__rh_api_connector) return;
-    window.__rh_api_connector = true;
+    if(window.__rh_ultimate_api_connector) return;
+    window.__rh_ultimate_api_connector = true;
 
-    console.log('[RH API CONNECTOR] Initializing');
+    console.log('[RH ULTIMATE API CONNECTOR] Initializing');
 
     // Конфигурация
     const config = {
-        id: "rh_api_player",
-        name: "Смотреть на RH", 
+        name: "RH Плеер",
         icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FF0000"><path d="M8 5v14l11-7z"/></svg>`,
-        apiUrl: "https://api4.rhhhhhhh.live/play", // Ваш API endpoint
-        style: `
-            .rh-api-btn {
-                display: flex;
-                align-items: center;
-                padding: 10px 15px;
-                margin: 5px;
-                background: rgba(255, 40, 40, 0.2);
-                border-radius: 8px;
-                cursor: pointer;
-                transition: all 0.3s;
-                font-weight: 500;
-            }
-            .rh-api-btn:hover {
-                background: rgba(255, 40, 40, 0.3);
-            }
-            .rh-api-icon {
-                width: 20px;
-                height: 20px;
-                margin-right: 8px;
-            }
-        `
+        apiUrl: "https://api4.rhhhhhhh.live/play",
+        retryDelay: 1000,
+        maxRetries: 5
     };
 
-    // Добавляем стили
-    const addStyles = () => {
-        const style = document.createElement('style');
-        style.textContent = config.style;
-        document.head.appendChild(style);
-    };
-
-    // Получаем данные карточки
-    const getCardData = () => {
-        try {
-            // Основной способ через Lampa Storage
-            const card = window.Lampa?.Storage?.get('card') || {};
-            
-            // Резервные способы если Lampa не доступна
-            if(!card.id) {
-                const fromUrl = window.location.href.match(/(movie|tv)\/(\d+)/);
-                if(fromUrl) {
-                    card.id = fromUrl[2];
-                    card.type = fromUrl[1] === 'movie' ? 'movie' : 'tv';
-                }
-            }
-            
-            return card;
-        } catch(e) {
-            console.error('Error getting card data:', e);
-            return {};
+    // Стили кнопки
+    const style = document.createElement('style');
+    style.textContent = `
+        .rh-player-btn {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            margin: 5px;
+            background: rgba(255, 40, 40, 0.2);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
         }
+        .rh-player-btn:hover {
+            background: rgba(255, 40, 40, 0.3);
+        }
+        .rh-player-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 8px;
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Все способы получения TMDB ID
+    const getTmdbId = () => {
+        // 1. Через Lampa Storage (основной способ)
+        try {
+            const card = window.Lampa?.Storage?.get('card');
+            if(card?.id) return {
+                id: card.id,
+                type: card.type,
+                season: card.season,
+                episode: card.episode
+            };
+        } catch(e) {}
+
+        // 2. Из URL страницы
+        const urlMatch = window.location.href.match(/(movie|tv)\/(\d+)/);
+        if(urlMatch) return {
+            id: urlMatch[2],
+            type: urlMatch[1] === 'movie' ? 'movie' : 'tv'
+        };
+
+        // 3. Из meta-тегов
+        const metaId = document.querySelector('meta[property="tmdb:id"], meta[name="tmdb_id"]');
+        if(metaId) return {
+            id: metaId.getAttribute('content') || metaId.getAttribute('value'),
+            type: document.querySelector('meta[property="tmdb:type"]')?.content || 'movie'
+        };
+
+        // 4. Из данных в DOM
+        const scriptData = document.querySelector('script[type="application/ld+json"]');
+        if(scriptData) {
+            try {
+                const data = JSON.parse(scriptData.textContent);
+                if(data.url) {
+                    const tmdbMatch = data.url.match(/themoviedb\.org\/(movie|tv)\/(\d+)/);
+                    if(tmdbMatch) return {
+                        id: tmdbMatch[2],
+                        type: tmdbMatch[1]
+                    };
+                }
+            } catch(e) {}
+        }
+
+        return null;
     };
 
-    // Создаем кнопку
-    const createButton = () => {
+    // Создание кнопки
+    const createButton = (retryCount = 0) => {
+        if(retryCount >= config.maxRetries) {
+            console.warn('Max retries reached, button not created');
+            return;
+        }
+
+        const container = document.querySelector('.selector__items, .selectbox, .player__sources') 
+                       || document.body;
+
         // Удаляем старую кнопку если есть
-        const oldBtn = document.querySelector('.rh-api-btn');
+        const oldBtn = document.querySelector('.rh-player-btn');
         if(oldBtn) oldBtn.remove();
 
-        // Ищем подходящий контейнер
-        const containers = [
-            '.selector__items',
-            '.selectbox', 
-            '.player__sources',
-            '.full__buttons'
-        ];
-        
-        let container = null;
-        for(const selector of containers) {
-            container = document.querySelector(selector);
-            if(container) break;
-        }
-
-        // Создаем свой контейнер если не нашли
-        if(!container) {
-            container = document.createElement('div');
-            container.className = 'rh-api-container';
-            container.style.position = 'fixed';
-            container.style.bottom = '20px';
-            container.style.right = '20px';
-            container.style.zIndex = '9999';
-            document.body.appendChild(container);
-        }
-
-        // Создаем кнопку
         const button = document.createElement('div');
-        button.className = 'rh-api-btn';
+        button.className = 'rh-player-btn';
         button.innerHTML = `
-            <div class="rh-api-icon">${config.icon}</div>
+            <div class="rh-player-icon">${config.icon}</div>
             <div>${config.name}</div>
         `;
 
-        // Обработчик клика
-        button.onclick = async () => {
-            const card = getCardData();
-            if(!card.id) {
-                alert('Не удалось получить ID карточки');
+        button.onclick = () => {
+            const data = getTmdbId();
+            if(!data?.id) {
+                alert('Ошибка: Не удалось определить ID контента\nПопробуйте открыть карточку заново');
                 return;
             }
 
-            // Формируем параметры запроса
             const params = new URLSearchParams();
-            params.append('tmdb_id', card.id);
-            params.append('type', card.type || 'movie');
-            if(card.season) params.append('season', card.season);
-            if(card.episode) params.append('episode', card.episode);
+            params.append('tmdb_id', data.id);
+            params.append('type', data.type || 'movie');
+            if(data.season) params.append('season', data.season);
+            if(data.episode) params.append('episode', data.episode);
 
-            try {
-                // Отправляем запрос к вашему API
-                const response = await fetch(`${config.apiUrl}?${params.toString()}`);
-                const data = await response.json();
-                
-                // Обрабатываем ответ
-                if(data.url) {
-                    // Если API возвращает прямую ссылку
-                    window.open(data.url, '_blank');
-                } else if(data.error) {
-                    alert(`Ошибка: ${data.error}`);
-                }
-            } catch(e) {
-                console.error('API request failed:', e);
-                alert('Ошибка соединения с API');
-            }
+            window.open(`${config.apiUrl}?${params.toString()}`, '_blank');
         };
 
         container.appendChild(button);
-    };
-
-    // Инициализация
-    const init = () => {
-        addStyles();
-        createButton();
-        
-        // Периодическая проверка (на случай динамического интерфейса)
-        setInterval(() => {
-            if(!document.querySelector('.rh-api-btn')) {
-                createButton();
-            }
-        }, 5000);
+        console.log('RH button added successfully');
     };
 
     // Запуск
-    if(document.readyState === 'complete') {
-        setTimeout(init, 1000);
-    } else {
-        window.addEventListener('load', () => setTimeout(init, 1000));
-    }
+    const init = () => {
+        let attempts = 0;
+        const tryCreate = () => {
+            attempts++;
+            if(typeof Lampa !== 'undefined' || attempts >= 3) {
+                createButton();
+            } else {
+                setTimeout(tryCreate, 1000);
+            }
+        };
+
+        if(document.readyState === 'complete') {
+            tryCreate();
+        } else {
+            window.addEventListener('load', tryCreate);
+        }
+    };
+
+    init();
 })();
