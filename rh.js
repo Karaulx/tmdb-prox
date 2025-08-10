@@ -1,13 +1,8 @@
-(function() {
-    // Защита от дублирования (как в оригинале)
-    if (window.ReYohohoPlugin) return;
-    window.ReYohohoPlugin = true;
+(function (  ) {
+    'use strict';
 
-    // Ожидание Lampa (специально для 2.4.6)
-    function waitForLampa(callback) {
-        if (window.Lampa && Lampa.Player) callback();
-        else setTimeout(() => waitForLampa(callback), 100);
-    }
+    function startPlugin() {
+      window.ReYohohoFixed = true;
 
     waitForLampa(function() {
         // ТОЧНАЯ КОПИЯ вашего первоначального кода ▼▼▼
@@ -49,14 +44,13 @@
         }
         // ▲▲▲ Код выше полностью идентичен вашему первоначальному варианту
 
-        // Инициализация только для 2.4.6 ▼
-        if (Lampa.Player.handler && Lampa.Player.handler.add) {
-            Lampa.Player.handler.add({
-                name: 'reyohoho',
-                priority: 10,
-                handler: handleReYohohoPlay
-            });
-            console.log('ReYohoho plugin зарегистрирован через handler.add()');
-        }
-    });
-})();
+  if (window.appready) add(); else {
+        Lampa.Listener.follow('app', function (e) {
+          if (e.type == 'ready') { add(); }
+        });
+      }
+    }
+
+    if (!window.plugin_torrents_ready) startPlugin();
+
+})( );
