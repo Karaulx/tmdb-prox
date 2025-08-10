@@ -1,94 +1,114 @@
 (function(){
-    if(window._reyohoho_full) return;
-    window._reyohoho_full = true;
+    // Защита от повторного выполнения
+    if(window._rh_ultimate_plugin) return;
+    window._rh_ultimate_plugin = true;
 
-    console.log('[REYOHOHO] Initializing standalone plugin');
+    console.log('[RH ULTIMATE] Plugin initialization started');
 
-    // Ожидаем загрузки Lampa
-    function waitLampa(callback) {
-        if(window.Lampa && window.Lampa.Plugins) callback();
-        else setTimeout(() => waitLampa(callback), 100);
+    // Универсальный метод ожидания Lampa
+    function waitForLampa(callback, attempts = 0) {
+        if(window.Lampa) {
+            // Специальная обработка для разных версий Lampa
+            if(window.Lampa.Plugins && (Array.isArray(window.Lampa.Plugins) || typeof window.Lampa.Plugins === 'object')) {
+                callback();
+            } else if(attempts < 10) {
+                setTimeout(() => waitForLampa(callback, attempts + 1), 200);
+            } else {
+                console.error('[RH ULTIMATE] Lampa.Plugins not found or invalid');
+            }
+        } else if(attempts < 20) {
+            setTimeout(() => waitForLampa(callback, attempts + 1), 100);
+        } else {
+            console.error('[RH ULTIMATE] Lampa not found');
+        }
     }
 
-    waitLampa(() => {
-        console.log('[REYOHOHO] Lampa ready, installing plugin');
+    waitForLampa(() => {
+        console.log('[RH ULTIMATE] Lampa ready, creating plugin');
 
-        const ReyohohoStandalone = {
-            name: "Reyohoho (Standalone)",
-            id: "reyohoho_standalone",
+        // Создаем наш плагин
+        const RhUltimatePlugin = {
+            name: "RH Ultimate Source",
+            id: "rh_ultimate",
             type: "universal",
-            version: "3.0",
+            version: "2.0",
             
-            // Полностью заменяем TMDB
-            sources: function(item, callback) {
-                console.log('[REYOHOHO] Full processing:', item.title, item.id);
+            // Универсальный метод поиска
+            search: function(query, tmdb_id, callback) {
+                console.log('[RH ULTIMATE] Smart search started:', query, tmdb_id);
                 
-                const params = {
-                    q: item.title,
-                    tmdb_id: item.id,
-                    year: item.year,
-                    type: item.type || (item.seasons ? 'tv' : 'movie'),
-                    clean_title: item.title.replace(/[^\w\sа-яА-Я]/gi, '').trim()
-                };
+                // Делаем запрос к вашему API
+                fetch(`https://reyohoho-gitlab.vercel.app/api/search?` + new URLSearchParams({
+                    q: query,
+                    tmdb_id: tmdb_id,
+                    clean_title: query.replace(/[^\w\sа-яА-Я]/gi, '').trim().toLowerCase()
+                }))
+                .then(response => {
+                    if(!response.ok) throw new Error('API response: ' + response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    // Форматируем ответ для Lampa
+                    const results = Array.isArray(data) ? data.map(item => ({
+                        title: item.title || query,
+                        url: item.url,
+                        quality: item.quality || 'HD',
+                        tmdb_id: tmdb_id,
+                        translation: item.translation || 'оригинал',
+                        // Дополнительные поля для совместимости
+                        file: item.url,
+                        quality: item.quality || 'HD',
+                        type: 'video'
+                    })) : [];
 
-                fetch(`https://reyohoho-gitlab.vercel.app/api/full?` + new URLSearchParams(params))
-                    .then(response => {
-                        if(!response.ok) throw new Error('API error: ' + response.status);
-                        return response.json();
-                    })
-                    .then(data => {
-                        const result = {
-                            // Основные метаданные
-                            meta: {
-                                id: item.id,
-                                type: params.type,
-                                title: item.title,
-                                year: item.year,
-                                poster: item.poster
-                            },
-                            // Источники для фильмов
-                            movie: Array.isArray(data.movie) ? data.movie.map(source => ({
-                                title: source.title || item.title,
-                                file: source.url,
-                                quality: source.quality || 'HD',
-                                translator: source.translation || 'оригинал'
-                            })) : [],
-                            // Источники для сериалов
-                            tv: Array.isArray(data.tv) ? data.tv.map(season => ({
-                                season: season.season,
-                                episodes: season.episodes.map(episode => ({
-                                    episode: episode.episode,
-                                    files: episode.files.map(file => ({
-                                        title: file.title || `S${season.season}E${episode.episode}`,
-                                        file: file.url,
-                                        quality: file.quality || 'HD'
-                                    }))
-                                }))
-                            })) : []
-                        };
-
-                        console.log('[REYOHOHO] Prepared data:', result);
-                        callback(result);
-                    })
-                    .catch(error => {
-                        console.error('[REYOHOHO] Full error:', error);
-                        callback({movie: [], tv: []});
-                    });
+                    console.log('[RH ULTIMATE] Found items:', results.length);
+                    callback(results);
+                })
+                .catch(error => {
+                    console.error('[RH ULTIMATE] Search error:', error);
+                    callback([]); // Всегда возвращаем массив
+                });
             },
             
-            // Метод для поиска (если нужен)
-            search: function(query, tmdb_id, callback) {
-                this.sources({title: query, id: tmdb_id}, (data) => {
-                    callback(data.movie.concat(data.tv));
-                });
+            // Альтернативный метод для новых версий Lampa
+            sources: function(item, callback) {
+                this.search(item.title, item.id, callback);
             }
         };
 
-        // Удаляем все TMDB плагины если есть
-        window.Lampa.Plugins = window.Lampa.Plugins.filter(p => !p.id.includes('tmdb'));
-        
-        // Регистрируем наш плагин
-        window.Lampa.Plugins.push(ReyohohoStandalone);
-        console.log('[REYOHOHO] Standalone plugin successfully registered');
+        // Универсальный метод регистрации плагина
+        try {
+            if(Array.isArray(window.Lampa.Plugins)) {
+                // Для старых версий (Lampa.Plugins - массив)
+                window.Lampa.Plugins.push(RhUltimatePlugin);
+            } else if(typeof window.Lampa.Plugins === 'object') {
+                // Для новых версий (Lampa.Plugins - объект)
+                window.Lampa.Plugins.register(RhUltimatePlugin);
+            } else {
+                // Экстренный fallback
+                window.Lampa.Plugins = [RhUltimatePlugin];
+            }
+            console.log('[RH ULTIMATE] Plugin registered successfully');
+        } catch(e) {
+            console.error('[RH ULTIMATE] Registration failed:', e);
+            
+            // Последняя попытка
+            if(!window.Lampa.Plugins) window.Lampa.Plugins = [];
+            window.Lampa.Plugins.push(RhUltimatePlugin);
+        }
     });
+
+    // Дополнительный таймаут для самых старых версий
+    setTimeout(() => {
+        if(!window._rh_ultimate_registered && window.Lampa) {
+            console.log('[RH ULTIMATE] Fallback registration');
+            if(!window.Lampa.Plugins) window.Lampa.Plugins = [];
+            window.Lampa.Plugins.push({
+                name: "RH Ultimate Source",
+                id: "rh_ultimate",
+                search: function(q, id, cb) { cb([]); },
+                sources: function(i, cb) { cb({movie: [], tv: []}); }
+            });
+        }
+    }, 3000);
 })();
