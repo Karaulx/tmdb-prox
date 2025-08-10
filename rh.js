@@ -1,16 +1,16 @@
 (function(){
-    if(window.__rh_nuclear_loader) return;
-    window.__rh_nuclear_loader = true;
+    if(window.__rh_ultimate_final) return;
+    window.__rh_ultimate_final = true;
 
-    console.log('[RH NUCLEAR LOADER] Starting aggressive interception');
+    console.log('[RH ULTIMATE FINAL] Starting nuclear approach');
 
     // 1. Конфигурация
     const config = {
-        name: "▶️ RH Плеер",
+        name: "🔥 СМОТРЕТЬ",
         apiUrl: "https://api4.rhhhhhhh.live/play",
-        btnId: "rh-nuclear-btn",
-        checkInterval: 500,
-        maxChecks: 40 // 20 секунд максимум
+        btnId: "rh-ultimate-btn",
+        retryDelay: 300,
+        maxRetries: 50 // 15 секунд максимум
     };
 
     // 2. Создаем "неубиваемую" кнопку
@@ -23,7 +23,7 @@
                 position: fixed !important;
                 right: 20px !important;
                 bottom: 80px !important;
-                z-index: 2147483647 !important; /* Максимальный z-index */
+                z-index: 2147483647 !important;
                 background: linear-gradient(135deg, #FF0000, #FF4500) !important;
                 color: white !important;
                 padding: 14px 28px !important;
@@ -42,159 +42,147 @@
         return btn;
     };
 
-    // 3. Перехват всех возможных мест, где может быть TMDB ID
-    const huntForTmdbId = () => {
-        // Все возможные источники ID в порядке приоритета
+    // 3. Все возможные способы получения ID (расширенная версия)
+    const getTmdbId = () => {
         const sources = [
-            // 1. Lampa Storage (оригинальный способ)
-            () => {
-                try {
-                    const card = window.Lampa?.Storage?.get('card');
-                    if(card?.id) return {
-                        id: card.id,
-                        type: card.type || 'movie',
-                        title: card.title || ''
-                    };
-                } catch(e) {}
-                return null;
-            },
+            // 1. Стандартные методы Lampa
+            () => window.Lampa?.Storage?.get('card'),
             
-            // 2. Внутренние переменные Lampa
-            () => {
-                try {
-                    if(window.Lampa?.TMDB?.id) return {
-                        id: window.Lampa.TMDB.id,
-                        type: window.Lampa.TMDB.type
-                    };
-                    
-                    if(window.Lampa?.Player?.current?.id) return {
-                        id: window.Lampa.Player.current.id,
-                        type: window.Lampa.Player.current.type
-                    };
-                } catch(e) {}
-                return null;
-            },
+            // 2. Внутренние структуры Lampa
+            () => window.Lampa?.TMDB?.data?.id ? {
+                id: window.Lampa.TMDB.data.id,
+                type: window.Lampa.TMDB.data.type
+            } : null,
             
             // 3. URL страницы
             () => {
-                try {
-                    const match = window.location.href.match(/\/(movie|tv)\/(\d+)/);
-                    if(match) return {
-                        id: match[2],
-                        type: match[1]
-                    };
-                } catch(e) {}
-                return null;
+                const match = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+                return match ? {id: match[2], type: match[1]} : null;
             },
             
-            // 4. Атрибуты data-* в DOM
+            // 4. Data-атрибуты
             () => {
-                try {
-                    const elements = document.querySelectorAll('[data-id][data-type]');
-                    for(let el of elements) {
-                        if(el.dataset.id && el.dataset.type) {
-                            return {
-                                id: el.dataset.id,
-                                type: el.dataset.type
-                            };
-                        }
-                    }
-                } catch(e) {}
-                return null;
+                const el = document.querySelector('[data-id][data-type]');
+                return el ? {
+                    id: el.dataset.id,
+                    type: el.dataset.type
+                } : null;
             },
             
-            // 5. Внутренние события Lampa
+            // 5. Глобальные события
+            () => window._lampa_events?.current?.id ? {
+                id: window._lampa_events.current.id,
+                type: window._lampa_events.current.type
+            } : null,
+            
+            // 6. Внутренний кеш Lampa
+            () => window.Lampa?.Cache?.get('card'),
+            
+            // 7. Перехват XHR-запросов
             () => {
-                try {
-                    if(window._lampa_events?.current?.id) return {
-                        id: window._lampa_events.current.id,
-                        type: window._lampa_events.current.type
-                    };
-                } catch(e) {}
+                if(window._lampa_last_xhr_url) {
+                    const match = window._lampa_last_xhr_url.match(/(movie|tv)\/(\d+)/);
+                    return match ? {id: match[2], type: match[1]} : null;
+                }
                 return null;
             }
         ];
 
-        // Пробуем все источники по очереди
+        // Пробуем все источники
         for(let source of sources) {
             try {
                 const result = source();
                 if(result?.id) {
-                    console.log('TMDB ID найден через:', source.toString().slice(0, 100));
-                    return result;
+                    console.log('ID found via:', source.toString().slice(0, 80));
+                    return {
+                        id: result.id,
+                        type: result.type || 'movie',
+                        title: result.title || ''
+                    };
                 }
             } catch(e) {
-                console.error('Ошибка в источнике:', e);
+                console.warn('Source error:', e);
             }
         }
-
+        
         return null;
     };
 
-    // 4. Агрессивный мониторинг
-    const startNuclearMonitoring = () => {
-        const btn = createButton();
-        let checksCount = 0;
-        let success = false;
-
-        const checkInterval = setInterval(() => {
-            checksCount++;
-            const tmdbData = huntForTmdbId();
-
-            if(tmdbData?.id && !success) {
-                // Успешно нашли ID
-                success = true;
-                clearInterval(checkInterval);
-                
-                btn.innerHTML = `<span style="font-size:20px">▶️</span> ${config.name}`;
-                btn.onclick = () => {
-                    const params = new URLSearchParams({
-                        tmdb_id: tmdbData.id,
-                        type: tmdbData.type,
-                        title: tmdbData.title || '',
-                        _: Date.now(),
-                        from: 'nuclear_loader'
-                    });
-                    window.open(`${config.apiUrl}?${params.toString()}`, '_blank');
-                };
-                
-                console.log(`Успешно! ID: ${tmdbData.id}, тип: ${tmdbData.type}`);
-                
-                // Добавляем анимацию для привлечения внимания
-                btn.style.animation = 'rh-pulse 1.5s infinite';
-                const pulseStyle = document.createElement('style');
-                pulseStyle.textContent = `
-                    @keyframes rh-pulse {
-                        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
-                        70% { transform: scale(1.05); box-shadow: 0 0 0 12px rgba(255, 0, 0, 0); }
-                        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
-                    }
-                `;
-                document.head.appendChild(pulseStyle);
-                
-                return;
+    // 4. Перехватчик XHR (дополнительный метод)
+    const hookXHR = () => {
+        if(window.XMLHttpRequest.isHooked) return;
+        
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+            if(url.includes('themoviedb')) {
+                window._lampa_last_xhr_url = url;
             }
-
-            if(checksCount >= config.maxChecks && !success) {
-                // Превышено количество попыток
-                clearInterval(checkInterval);
-                btn.innerHTML = `<span style="font-size:20px">❌</span> Ошибка загрузки`;
-                btn.onclick = () => {
-                    alert('Пожалуйста:\n1. Убедитесь что карточка полностью открыта\n2. Проверьте интернет-соединение\n3. Обновите страницу (Ctrl+F5)');
-                };
-                btn.style.background = '#FF0000';
-                console.error('Не удалось получить TMDB ID после всех попыток');
-            }
-        }, config.checkInterval);
+            return originalOpen.apply(this, arguments);
+        };
+        
+        window.XMLHttpRequest.isHooked = true;
+        console.log('XHR hook installed');
     };
 
-    // 5. Запускаем при полной загрузке страницы
-    if(document.readyState === 'complete') {
-        startNuclearMonitoring();
-    } else {
-        window.addEventListener('load', startNuclearMonitoring);
-    }
+    // 5. Основная функция
+    const init = (retryCount = 0) => {
+        const btn = createButton();
+        const tmdbData = getTmdbId();
 
-    // Дублирующий запуск через 3 секунды
-    setTimeout(startNuclearMonitoring, 3000);
+        if(tmdbData?.id) {
+            // Успех - настраиваем кнопку
+            btn.innerHTML = `<span style="font-size:20px">▶️</span> ${config.name}`;
+            btn.onclick = () => {
+                const params = new URLSearchParams({
+                    tmdb_id: tmdbData.id,
+                    type: tmdbData.type,
+                    title: tmdbData.title || '',
+                    _: Date.now()
+                });
+                window.open(`${config.apiUrl}?${params}`, '_blank');
+            };
+            btn.style.display = 'block';
+            
+            // Анимация для привлечения внимания
+            btn.style.animation = 'rh-pulse 1.5s infinite';
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes rh-pulse {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                    100% { transform: scale(1); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            console.log(`Success! ID: ${tmdbData.id}`);
+            return;
+        }
+
+        if(retryCount < config.maxRetries) {
+            // Продолжаем попытки
+            setTimeout(() => init(retryCount + 1), config.retryDelay);
+            if(retryCount === 0) hookXHR(); // Устанавливаем перехватчик
+        } else {
+            // Все попытки исчерпаны
+            btn.innerHTML = `<span style="font-size:20px">❌</span> Ошибка`;
+            btn.onclick = () => {
+                alert('Действия:\n1. Полностью откройте карточку\n2. Нажмите F5 для перезагрузки\n3. Если проблема сохраняется - сообщите в поддержку');
+            };
+            btn.style.display = 'block';
+            console.error('Failed after all retries');
+        }
+    };
+
+    // 6. Запуск
+    const start = () => {
+        if(document.readyState === 'complete') {
+            setTimeout(init, 500);
+        } else {
+            window.addEventListener('load', () => setTimeout(init, 500));
+        }
+        setTimeout(init, 3000); // Дублирующий запуск
+    };
+
+    start();
 })();
