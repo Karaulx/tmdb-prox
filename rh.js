@@ -1,125 +1,143 @@
 (function(){
-    if(window.__rh_reyohoho_integration) return;
-    window.__rh_reyohoho_integration = true;
+    if(window.__rh_final_solution) return;
+    window.__rh_final_solution = true;
 
-    console.log('[RH REYOHOHO INTEGRATION] Initializing');
+    console.log('[RH FINAL SOLUTION] Initializing');
 
     // 1. Конфигурация на основе логов reyohoho
     const config = {
         name: "▶️ RH Плеер",
         apiBase: "https://api4.rhhhhhhh.live",
-        endpoints: {
-            health: "/health",
-            imdbToKp: "/imdb_to_kp/{imdb_id}",
-            kpInfo: "/kp_info2/{kp_id}",
-            rating: "/rating/{kp_id}",
-            comments: "/comments/{kp_id}",
-            play: "/play" 
-        },
-        btnId: "rh-reyohoho-btn"
+        btnId: "rh-final-btn",
+        checkInterval: 500,
+        maxChecks: 20
     };
 
-    // 2. Анализ текущих запросов для определения ID
-    const extractContentIds = () => {
-        const requests = performance.getEntriesByType("resource");
-        let ids = {};
-
-        requests.forEach(req => {
-            // Определяем IMDB ID (как в логе /imdb_to_kp/0198781)
-            const imdbMatch = req.name.match(/imdb_to_kp\/(tt\d+)/);
-            if(imdbMatch) ids.imdb_id = imdbMatch[1];
-
-            // Определяем KP ID (как в логе /kp_info2/458)
-            const kpMatch = req.name.match(/kp_info2\/(\d+)/);
-            if(kpMatch) ids.kp_id = kpMatch[1];
-        });
-
-        return ids;
-    };
-
-    // 3. Создаем кнопку в стиле Lampa
+    // 2. Создаем НЕУДАЛЯЕМУЮ кнопку
     const createButton = () => {
-        const btn = document.createElement('div');
-        btn.id = config.btnId;
-        btn.className = 'selector__item';
-        btn.innerHTML = `
-            <div class="selector__item-icon">
-                <svg height="24" viewBox="0 0 24 24" width="24" fill="#FF0000">
-                    <path d="M8 5v14l11-7z"/>
-                </svg>
-            </div>
-            <div class="selector__item-title">${config.name}</div>
-        `;
-        btn.style.cssText = 'margin: 5px; cursor: pointer;';
+        let btn = document.getElementById(config.btnId);
+        if(!btn) {
+            btn = document.createElement('div');
+            btn.id = config.btnId;
+            btn.style.cssText = `
+                position: fixed !important;
+                right: 20px !important;
+                bottom: 80px !important;
+                z-index: 2147483647 !important;
+                background: linear-gradient(135deg, #FF0000, #FF4500) !important;
+                color: white !important;
+                padding: 14px 28px !important;
+                border-radius: 12px !important;
+                font-size: 18px !important;
+                font-weight: bold !important;
+                cursor: pointer !important;
+                border: none !important;
+                box-shadow: 0 6px 24px rgba(255, 0, 0, 0.4) !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
+            `;
+            btn.innerHTML = `<span style="font-size:20px">▶️</span> ${config.name}`;
+            document.body.appendChild(btn);
+            
+            // Анимация для привлечения внимания
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes rh-pulse {
+                    0% { transform: scale(1); opacity: 1; }
+                    50% { transform: scale(1.05); opacity: 0.9; }
+                    100% { transform: scale(1); opacity: 1; }
+                }
+                #${config.btnId} {
+                    animation: rh-pulse 1.5s infinite;
+                }
+            `;
+            document.head.appendChild(style);
+        }
         return btn;
     };
 
-    // 4. Формируем правильный play-запрос как в reyohoho
-    const buildPlayRequest = (ids) => {
-        if(!ids.kp_id) return null;
+    // 3. Анализ запросов к API (как в логах reyohoho)
+    const getContentIds = () => {
+        const requests = performance.getEntriesByType("resource");
+        const ids = {};
+        
+        requests.forEach(req => {
+            // IMDB ID (как /imdb_to_kp/tt0198781)
+            const imdbMatch = req.name.match(/imdb_to_kp\/(tt\d+)/);
+            if(imdbMatch) ids.imdb_id = imdbMatch[1];
+            
+            // Kinopoisk ID (как /kp_info2/458)
+            const kpMatch = req.name.match(/kp_info2\/(\d+)/);
+            if(kpMatch) ids.kp_id = kpMatch[1];
+        });
+        
+        return ids;
+    };
 
+    // 4. Формирование URL для плеера
+    const getPlayUrl = (ids) => {
+        if(!ids.kp_id) return null;
+        
         const params = new URLSearchParams({
             kp_id: ids.kp_id,
             imdb_id: ids.imdb_id || '',
             _: Date.now()
         });
-
-        return `${config.apiBase}${config.endpoints.play}?${params}`;
+        
+        return `${config.apiBase}/play?${params}`;
     };
 
-    // 5. Встраиваем кнопку в интерфейс Lampa
+    // 5. Основная функция
     const init = (attempt = 0) => {
-        const ids = extractContentIds();
-        const playUrl = buildPlayRequest(ids);
-        const container = document.querySelector('.selector__items, .full__buttons');
+        const btn = createButton();
+        const ids = getContentIds();
+        const playUrl = getPlayUrl(ids);
 
-        if(container && playUrl) {
-            const btn = createButton();
-            
+        if(playUrl) {
             btn.onclick = () => {
-                // Полная последовательность как в reyohoho
-                fetch(`${config.apiBase}${config.endpoints.health}`)
+                console.log('Starting player with URL:', playUrl);
+                
+                // Проверяем доступность API
+                fetch(`${config.apiBase}/health`)
                     .then(() => {
-                        // 1. Проверка здоровья API
-                        fetch(`${config.apiBase}${config.endpoints.imdbToKp.replace('{imdb_id}', ids.imdb_id || '')}`)
-                            .then(() => {
-                                // 2. Получение информации о фильме
-                                fetch(`${config.apiBase}${config.endpoints.kpInfo.replace('{kp_id}', ids.kp_id)}`)
-                                    .then(() => {
-                                        // 3. Запуск плеера
-                                        if(window.Lampa?.Player?.play) {
-                                            window.Lampa.Player.play({
-                                                title: "RH Плеер",
-                                                files: [{
-                                                    title: "RH Плеер",
-                                                    file: playUrl,
-                                                    type: "video/mp4"
-                                                }]
-                                            });
-                                        } else {
-                                            window.open(playUrl, '_blank');
-                                        }
-                                    });
+                        // Запускаем через плеер Lampa если доступен
+                        if(window.Lampa?.Player?.play) {
+                            window.Lampa.Player.play({
+                                title: ids.imdb_id || ids.kp_id,
+                                files: [{
+                                    title: 'RH Плеер',
+                                    file: playUrl,
+                                    type: 'video/mp4'
+                                }]
                             });
+                        } else {
+                            window.open(playUrl, '_blank');
+                        }
                     })
                     .catch(e => {
-                        console.error('API error:', e);
-                        alert('Ошибка доступа к API. Попробуйте позже.');
+                        console.error('API health check failed:', e);
+                        alert('API временно недоступен. Попробуйте позже.');
                     });
             };
-
-            container.appendChild(btn);
-            console.log('Button integrated with Lampa');
+            console.log('Play button ready with IDs:', ids);
             return;
         }
 
-        if(attempt < 5) setTimeout(() => init(attempt + 1), 1000);
+        if(attempt < config.maxChecks) {
+            setTimeout(() => init(attempt + 1), config.checkInterval);
+        } else {
+            btn.onclick = () => alert('Не удалось определить контент. Откройте карточку полностью и обновите страницу.');
+        }
     };
 
-    // 6. Запускаем
+    // 6. Запуск
     if(document.readyState === 'complete') {
-        setTimeout(init, 500);
+        setTimeout(init, 1000);
     } else {
-        window.addEventListener('load', () => setTimeout(init, 500));
+        window.addEventListener('load', () => setTimeout(init, 1000));
     }
+
+    // Дублирующий запуск через 3 секунды
+    setTimeout(init, 3000);
 })();
