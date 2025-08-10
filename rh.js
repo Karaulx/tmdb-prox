@@ -1,99 +1,96 @@
 (function() {
-  // 1. Регистрация плагина
-  if (window.__reyohoho_plugin) return;
-  window.__reyohoho_plugin = true;
+  // Защита от дублирования
+  if (window.__reyohoho_plugin_v2) return;
+  window.__reyohoho_plugin_v2 = true;
 
   class ReYohohoProvider {
     constructor() {
-      this.name = 'ReYohoho Auto';
+      this.name = 'ReYohoho Direct';
+      this.id = 'reyohoho_direct';
       this.type = 'plugin';
       this.active = true;
-      this.cache = {};
+      this.settings = {
+        api_url: 'https://api.reyohoho.live/v3'  // Основной API endpoint
+      };
     }
 
     async getUrl(params) {
       try {
+        // 1. Получаем TMDB ID из параметров
         const tmdbId = params.tmdb_id;
-        if (!tmdbId) throw new Error('TMDB ID не найден');
-
-        // Проверяем кеш
-        if (this.cache[tmdbId]) {
-          console.log('Используем кешированную ссылку');
-          return this.createResponse(this.cache[tmdbId], params.title);
+        if (!tmdbId) {
+          console.error('TMDB ID не передан');
+          return null;
         }
 
-        // Получаем ссылку
-        const streamUrl = await this.extractStream(tmdbId);
-        if (!streamUrl) throw new Error('Не удалось получить ссылку');
-
-        // Кешируем результат
-        this.cache[tmdbId] = streamUrl;
+        // 2. Запрашиваем поток через API
+        const streamData = await this.fetchStream(tmdbId, params.type || 'movie');
         
-        return this.createResponse(streamUrl, params.title);
+        if (!streamData?.url) {
+          console.error('Не удалось получить ссылку на поток');
+          return null;
+        }
+
+        // 3. Возвращаем данные для плеера
+        return {
+          url: streamData.url,
+          name: this.name,
+          title: params.title || 'Фильм',
+          quality: streamData.quality || 'auto',
+          headers: {
+            'Referer': 'https://reyohoho.github.io/',
+            'Origin': 'https://reyohoho.github.io'
+          }
+        };
+
       } catch (e) {
-        console.error('Ошибка ReYohohoProvider:', e);
+        console.error('Ошибка в ReYohohoProvider:', e);
         return null;
       }
     }
 
-    async extractStream(tmdbId) {
-      // Вариант 1: Прямой запрос к API (если известно)
-      const apiUrl = `https://api.reyohoho.live/stream?tmdb_id=${tmdbId}`;
-      try {
-        const response = await fetch(apiUrl);
-        if (response.ok) {
-          const data = await response.json();
-          return data.url; // Предполагаем формат {url: "..."}
+    async fetchStream(tmdbId, contentType) {
+      // Пробуем разные API endpoints
+      const endpoints = [
+        `${this.settings.api_url}/stream?tmdb_id=${tmdbId}&type=${contentType}`,
+        `https://reyohoho-api.vercel.app/play?id=${tmdbId}&source=tmdb`
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.url) return data;
+          }
+        } catch (e) {
+          console.log(`Ошибка для ${endpoint}:`, e.message);
         }
-      } catch (e) {
-        console.log('API не доступен, пробуем парсинг');
       }
 
-      // Вариант 2: Парсинг страницы (требует CORS)
-      const pageUrl = `https://reyohoho.github.io/reyohoho/movie/${tmdbId}`;
-      try {
-        // Используем расширение CORS Unblock
-        const html = await (await fetch(pageUrl)).text();
-        
-        // Ищем HLS или MP4
-        const m3u8Match = html.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/);
-        const mp4Match = html.match(/(https?:\/\/[^\s"']+\.mp4[^\s"']*)/);
-        
-        return m3u8Match?.[0] || mp4Match?.[0] || null;
-      } catch (e) {
-        console.error('Ошибка парсинга:', e);
-        return null;
-      }
-    }
-
-    createResponse(url, title) {
-      return {
-        url: url,
-        name: 'ReYohoho',
-        title: title || 'Фильм',
-        headers: {
-          'Referer': 'https://reyohoho.github.io/',
-          'Origin': 'https://reyohoho.github.io'
-        }
-      };
+      throw new Error('Все API endpoints недоступны');
     }
   }
 
-  // 2. Регистрация провайдера
-  const registerProvider = () => {
-    if (window.plugin_provider) {
+  // Регистрация провайдера
+  const register = () => {
+    if (typeof window.plugin_provider === 'function') {
       window.plugin_provider(new ReYohohoProvider());
+      console.log('ReYohohoProvider успешно зарегистрирован');
     } else {
-      window.extensions_provider = window.extensions_provider || [];
-      window.extensions_provider.push(new ReYohohoProvider());
+      console.warn('Lampa API не доступно');
     }
-    console.log('ReYohoho Provider зарегистрирован');
   };
 
-  // 3. Запуск
+  // Автоматическая регистрация
   if (document.readyState === 'complete') {
-    registerProvider();
+    register();
   } else {
-    window.addEventListener('load', registerProvider);
+    window.addEventListener('load', register);
   }
 })();
