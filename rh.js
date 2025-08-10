@@ -2,8 +2,8 @@
     // 1. Защита от повторного запуска
     if (window.__rh_ultra_button) return;
     window.__rh_ultra_button = true;
-    
-    console.log('[RH] Инициализация...');
+
+    console.log('[RH] Инициализация для Lampa 2.4.6...');
 
     // 2. Создаем кнопку
     const btn = document.createElement('button');
@@ -40,10 +40,10 @@
     `;
     document.head.appendChild(style);
 
-    // 4. Получение данных о контенте
+    // 4. Получение данных
     function getContentInfo() {
         try {
-            // --- Способ 1: По URL ---
+            // --- Способ 1: URL ---
             const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
             if (urlMatch) {
                 return {
@@ -53,30 +53,23 @@
                 };
             }
 
-            // --- Способ 2: Через Lampa Activity (для 2.4.6) ---
-            if (typeof window.Lampa !== 'undefined' && Lampa.Activity && Lampa.Activity.active) {
-                try {
-                    const active = Lampa.Activity.active();
-                    if (active && active.data && active.data.id) {
-                        let type = 'movie';
-                        if (active.data.movie) type = 'movie';
-                        else if (active.data.tv) type = 'tv';
-                        else if (active.data.type) type = active.data.type;
-                        
-                        return {
-                            id: active.data.id,
-                            type: type,
-                            source: 'Lampa.Activity'
-                        };
-                    }
-                } catch (e) {
-                    console.error('[RH] Lampa Activity Error:', e);
-                }
+            // --- Способ 2: Глобальный объект Lampa ---
+            if (window.activity && window.activity.data && window.activity.data.id) {
+                let type = 'movie';
+                if (window.activity.data.movie) type = 'movie';
+                else if (window.activity.data.tv) type = 'tv';
+                else if (window.activity.data.type) type = window.activity.data.type;
+
+                return {
+                    id: window.activity.data.id,
+                    type: type,
+                    source: 'window.activity'
+                };
             }
 
             return null;
         } catch (e) {
-            console.error('[RH] Global Error:', e);
+            console.error('[RH] Ошибка при получении данных:', e);
             return null;
         }
     }
@@ -85,7 +78,7 @@
     btn.onclick = function() {
         try {
             const content = getContentInfo();
-            
+
             if (!content) {
                 alert('❌ Контент не найден!\n\n1. Откройте карточку фильма/сериала\n2. Дождитесь загрузки\n3. Попробуйте снова');
                 return;
@@ -93,7 +86,7 @@
 
             console.log('[RH] Контент найден:', content);
             const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${content.id}&type=${content.type}`;
-            
+
             try {
                 const newWindow = window.open('', '_blank');
                 if (newWindow) {
@@ -114,7 +107,7 @@
         }
     };
 
-    // 6. Функция добавления кнопки
+    // 6. Добавление кнопки
     function safeAppend() {
         try {
             if (!document.getElementById('rh-ultra-button')) {
@@ -126,19 +119,25 @@
         }
     }
 
-    // 7. Запуск
+    // 7. Запуск при загрузке
     if (document.readyState === 'complete') {
         safeAppend();
     } else {
         window.addEventListener('load', safeAppend);
     }
 
-    // 8. Защита от удаления
+    // 8. Проверка при переходах внутри Lampa
+    let lastId = null;
     setInterval(() => {
+        const info = getContentInfo();
+        if (info && info.id !== lastId) {
+            lastId = info.id;
+            console.log('[RH] Обновлено: ', info);
+        }
         if (!document.getElementById('rh-ultra-button')) {
             safeAppend();
         }
-    }, 2000);
+    }, 1500);
 
-    console.log('[RH] Готово!');
+    console.log('[RH] Готово для Lampa 2.4.6!');
 })();
