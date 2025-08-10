@@ -1,19 +1,33 @@
 (function() {
-    // 1. Проверяем, не запускали ли мы уже этот скрипт
-    if (window.__rh_final_button) return;
-    window.__rh_final_button = true;
+    // 1. Защита от повторного запуска
+    if (window.__rh_button_final) return;
+    window.__rh_button_final = true;
     
-    // 2. Функция для показа уведомлений
-    function showAlert(message) {
-        alert('RH DEBUG:\n' + message);
-    }
+    // 2. Создаем контейнер для диагностики
+    const createDebugPanel = () => {
+        const panel = document.createElement('div');
+        panel.id = 'rh-debug-panel';
+        panel.style.cssText = `
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            z-index: 999999;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-family: Arial;
+            max-width: 300px;
+            display: none;
+        `;
+        document.body.appendChild(panel);
+        return panel;
+    };
 
-    // 3. Создаем кнопку (ваш оригинальный стиль)
-    function createButton() {
+    // 3. Ваша кнопка с улучшениями
+    const createButton = () => {
         const btn = document.createElement('button');
-        btn.id = 'rh-final-btn';
-        
-        // Ваши стили
+        btn.id = 'rh-main-button';
         btn.style.cssText = `
             position: fixed !important;
             right: 20px !important;
@@ -30,82 +44,105 @@
             display: flex !important;
             align-items: center !important;
             gap: 10px !important;
+            cursor: pointer !important;
         `;
-        
         btn.innerHTML = '<span style="font-size:20px">▶️</span> RH Плеер';
         return btn;
-    }
+    };
 
-    // 4. Основная функция при клике
-    function onButtonClick() {
-        let debugInfo = '';
-        
-        // Проверяем URL страницы
-        const path = window.location.pathname;
-        debugInfo += `Текущий URL: ${path}\n`;
-        
-        // Пытаемся определить ID и тип контента
-        let contentId, contentType;
-        
-        // Вариант 1: Из URL (/movie/123 или /tv/456)
-        const urlMatch = path.match(/\/(movie|tv)\/(\d+)/);
-        if (urlMatch) {
-            contentType = urlMatch[1];
-            contentId = urlMatch[2];
-            debugInfo += `Нашли ID в URL: ${contentId} (тип: ${contentType})\n`;
-        }
-        
-        // Вариант 2: Из данных Lampa
-        if (!contentId && window.Lampa) {
-            try {
-                const card = window.Lampa.Storage.get('card');
-                if (card && card.id) {
-                    contentId = card.id;
-                    contentType = card.type || 'movie';
-                    debugInfo += `Нашли ID в Lampa: ${contentId} (тип: ${contentType})\n`;
-                }
-            } catch (e) {
-                debugInfo += `Ошибка при чтении данных Lampa: ${e.message}\n`;
-            }
-        }
-        
-        if (contentId) {
-            const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${contentId}&type=${contentType}`;
-            debugInfo += `Пытаемся открыть: ${playUrl}\n`;
-            
-            // Пробуем открыть плеер
-            try {
-                window.open(playUrl, '_blank');
-                debugInfo += 'Успешно вызвали window.open\n';
-            } catch (e) {
-                debugInfo += `Ошибка при открытии: ${e.message}\n`;
-            }
-        } else {
-            debugInfo += 'Не удалось определить ID контента\n';
-            debugInfo += '1. Полностью откройте карточку фильма/сериала\n';
-            debugInfo += '2. Дождитесь загрузки\n';
-            debugInfo += '3. Попробуйте снова';
-        }
-        
-        showAlert(debugInfo);
-    }
-
-    // 5. Добавляем кнопку на страницу
-    function addButton() {
-        // Проверяем, не добавлена ли кнопка
-        if (document.getElementById('rh-final-btn')) return;
-        
+    // 4. Логика работы
+    const init = () => {
+        // Создаем элементы
+        const debugPanel = createDebugPanel();
         const btn = createButton();
-        btn.onclick = onButtonClick;
         document.body.appendChild(btn);
         
-        showAlert('Кнопка успешно добавлена!\nНажмите на нее для диагностики.');
-    }
-
-    // 6. Запускаем
+        // Функция диагностики
+        const checkSystem = () => {
+            let report = '';
+            
+            // Проверяем URL
+            const url = window.location.href;
+            report += `URL: ${url}\n`;
+            
+            // Пытаемся получить ID
+            let contentId, contentType;
+            
+            // Из URL
+            const urlMatch = url.match(/\/(movie|tv)\/(\d+)/);
+            if (urlMatch) {
+                contentType = urlMatch[1];
+                contentId = urlMatch[2];
+                report += `ID из URL: ${contentId} (${contentType})\n`;
+            }
+            
+            // Из Lampa
+            if (window.Lampa) {
+                try {
+                    const card = window.Lampa.Storage.get('card');
+                    if (card?.id) {
+                        contentId = card.id;
+                        contentType = card.type || 'movie';
+                        report += `ID из Lampa: ${contentId} (${contentType})\n`;
+                    }
+                } catch (e) {
+                    report += `Ошибка Lampa: ${e.message}\n`;
+                }
+            }
+            
+            return {report, contentId, contentType};
+        };
+        
+        // Обработчик клика
+        btn.onclick = () => {
+            const {report, contentId, contentType} = checkSystem();
+            
+            if (contentId) {
+                const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${contentId}&type=${contentType}`;
+                
+                // Пробуем открыть
+                try {
+                    const newWindow = window.open('', '_blank');
+                    if (newWindow) {
+                        newWindow.location.href = playUrl;
+                        debugPanel.innerHTML = `${report}\n\nУспешно открыли плеер!`;
+                    } else {
+                        debugPanel.innerHTML = `${report}\n\nБраузер заблокировал открытие окна. Разрешите всплывающие окна.`;
+                    }
+                } catch (e) {
+                    debugPanel.innerHTML = `${report}\n\nОшибка: ${e.message}`;
+                }
+            } else {
+                debugPanel.innerHTML = `${report}\n\nНе найден ID контента. Откройте карточку полностью.`;
+            }
+            
+            // Показываем панель диагностики
+            debugPanel.style.display = 'block';
+            setTimeout(() => { debugPanel.style.display = 'none'; }, 5000);
+        };
+        
+        // Кнопка закрытия диагностики
+        const closeBtn = document.createElement('div');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            cursor: pointer;
+            font-size: 20px;
+        `;
+        closeBtn.onclick = () => {
+            debugPanel.style.display = 'none';
+        };
+        debugPanel.appendChild(closeBtn);
+        
+        console.log('RH Player Button initialized');
+    };
+    
+    // Запускаем когда страница загрузится
     if (document.readyState === 'complete') {
-        addButton();
+        init();
     } else {
-        window.addEventListener('load', addButton);
+        window.addEventListener('load', init);
     }
 })();
