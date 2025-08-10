@@ -1,20 +1,17 @@
 (function(){
     // 1. Защита от дублирования
-    if(window.__rh_final_v6) return;
-    window.__rh_final_v6 = true;
+    if(window.__rh_final_v6_1) return;
+    window.__rh_final_v6_1 = true;
     
-    console.log('[RH FINAL v6] Initializing plugin');
+    console.log('[RH FINAL v6.1] Initializing plugin');
 
-    // 2. Функция для получения объекта Lampa с учетом всех возможных вариантов
+    // 2. Получение объекта Lampa
     function getLampaObject() {
-        // Основные места, где может находиться Lampa
         const targets = [
             window,
             window.top,
             window.parent,
-            window.opener,
-            document.querySelector('iframe#lampa')?.contentWindow,
-            document.querySelector('iframe[name="lampa"]')?.contentWindow
+            window.opener
         ].filter(Boolean);
 
         for(const target of targets) {
@@ -23,45 +20,41 @@
                 if(target.__lampa_public?.Lampa) return target.__lampa_public.Lampa;
             } catch(e) {}
         }
-        
         return null;
     }
 
-    // 3. Основная функция инициализации
+    // 3. Инициализация плагина
     function initPlugin() {
         const lampa = getLampaObject();
-        
         if(!lampa) {
-            console.warn('[RH FINAL v6] Lampa object not found');
+            console.warn('[RH FINAL v6.1] Lampa object not found');
             return false;
         }
 
-        console.log('[RH FINAL v6] Lampa found:', lampa);
+        console.log('[RH FINAL v6.1] Lampa found:', lampa);
 
-        // 4. Создаем класс источника
+        // 4. Класс источника
         class RhFinalSource {
             constructor() {
-                this.name = "RH Source Final";
-                this.id = "rh_final_source_v6";
-                this.version = "6.0";
+                this.name = "RH Source";
+                this.id = "rh_final_source_v6_1";
+                this.version = "6.1";
                 this.type = "universal";
                 this.priority = 1;
-                this.active = true; // Явно указываем, что источник активен
-                this.supported_types = ['movie', 'series']; // Явное указание поддерживаемых типов
+                this.active = true;
             }
 
             search(query, tmdb_id, callback) {
-                console.log('[RH FINAL v6] Search:', query, tmdb_id);
+                console.log('[RH FINAL v6.1] Search:', query, tmdb_id);
                 
-                // Тестовые данные (замените на реальный API запрос)
+                // Временные тестовые данные
                 callback([{
-                    title: `${query} [RH TEST]`,
-                    url: `https://api4.rhhhhhhh.live/stream?tmdb=${tmdb_id}`,
+                    title: `${query} (RH Test)`,
+                    url: `https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_1MB.mp4`,
                     quality: "1080p",
                     translation: "оригинал",
                     type: "video",
                     tmdb_id: tmdb_id,
-                    // Дополнительные обязательные поля
                     iframe: false,
                     external: false,
                     origin: 'RH Source'
@@ -73,71 +66,60 @@
             }
         }
 
-        // 5. Регистрация источника
+        // 5. Регистрация
         try {
             const source = new RhFinalSource();
             
-            // Совместимость со всеми версиями Lampa
+            // Совместимость со всеми версиями
             if(lampa.Plugin?.add) {
                 lampa.Plugin.add(source);
-                console.log('[RH FINAL v6] Registered via Plugin.add()');
+                console.log('[RH FINAL v6.1] Registered via Plugin.add()');
             } 
-            else if(lampa.Plugins?.push) {
+            else if(Array.isArray(lampa.Plugins)) {
                 lampa.Plugins.push(source);
-                console.log('[RH FINAL v6] Registered via Plugins.push()');
+                console.log('[RH FINAL v6.1] Registered via Plugins.push()');
             }
             else {
-                console.error('[RH FINAL v6] No registration method found');
+                console.error('[RH FINAL v6.1] No registration method found');
                 return false;
             }
 
-            // 6. Принудительное обновление кеша
-            if(lampa.API?.pluginUpdate) {
-                lampa.API.pluginUpdate();
-                console.log('[RH FINAL v6] Cache updated');
-            }
-
-            // 7. Проверка через 3 секунды
+            // 6. Проверка через 3 секунды
             setTimeout(() => {
-                const plugins = lampa.Plugin?.list?.() || lampa.Plugins || [];
-                const found = plugins.find(p => p.id === 'rh_final_source_v6');
-                console.log('[RH FINAL v6] Verification:', found ? 'SUCCESS' : 'FAILED');
-                
-                if(!found) {
-                    console.warn('[RH FINAL v6] Possible solutions:',
-                        '1. Clear cache and reload',
-                        '2. Check plugin priority',
-                        '3. Verify Lampa version compatibility');
+                try {
+                    const plugins = lampa.Plugin?.list?.() || 
+                                 (Array.isArray(lampa.Plugins) ? lampa.Plugins : []);
+                    
+                    if(Array.isArray(plugins)) {
+                        const found = plugins.find(p => p.id === 'rh_final_source_v6_1');
+                        console.log('[RH FINAL v6.1] Verification:', found ? 'SUCCESS' : 'FAILED');
+                    } else {
+                        console.warn('[RH FINAL v6.1] Plugins is not an array:', plugins);
+                    }
+                } catch(e) {
+                    console.error('[RH FINAL v6.1] Verification error:', e);
                 }
             }, 3000);
 
             return true;
         } catch(e) {
-            console.error('[RH FINAL v6] Registration error:', e);
+            console.error('[RH FINAL v6.1] Registration error:', e);
             return false;
         }
     }
 
-    // 8. Стратегия запуска
+    // 7. Запуск
     function start() {
-        // Первая попытка
         if(initPlugin()) return;
-
-        // Интервал проверки
+        
         const interval = setInterval(() => {
-            if(initPlugin()) {
-                clearInterval(interval);
-            }
+            if(initPlugin()) clearInterval(interval);
         }, 500);
 
-        // Таймаут
-        setTimeout(() => {
-            clearInterval(interval);
-            console.warn('[RH FINAL v6] Initialization timeout');
-        }, 10000);
+        setTimeout(() => clearInterval(interval), 10000);
     }
 
-    // 9. Запускаем после полной загрузки страницы
+    // 8. Загрузка
     if(document.readyState === 'complete') {
         start();
     } else {
