@@ -1,126 +1,93 @@
 (function() {
     'use strict';
 
-    if (window.plugin_reyohoho_ready) return;
-    window.plugin_reyohoho_ready = true;
+    if (window.ReYohohoPluginReady) return;
+    window.ReYohohoPluginReady = true;
 
-    const ReYohohoHandler = {
-        play: async function(data) {
-            try {
-                // 1. Улучшенное получение данных фильма
-                const movie = data?.movie || data?.item || data;
-                if (!movie) {
-                    console.error('Полученные данные:', data);
-                    throw new Error('Не получены данные фильма');
+    async function handleReYohohoPlay(data) {
+        try {
+            // 1. Универсальное получение данных
+            const movie = data.movie || data;
+            if (!movie) {
+                console.error('Ошибка: Нет данных фильма', data);
+                return;
+            }
+
+            // 2. Все возможные варианты ID
+            const type = movie.name ? 'tv' : 'movie';
+            const id = movie.tmdb_id || movie.kinopoisk_id || movie.id || 
+                      (movie.ids && (movie.ids.tmdb || movie.ids.kinopoisk));
+
+            if (!id) {
+                console.error('Ошибка: Не найден ID у фильма', movie);
+                Lampa.Noty.show('Ошибка: Нет ID фильма');
+                return;
+            }
+
+            // 3. Получение ссылки
+            const contentUrl = `https://reyohoho.github.io/reyohoho/${type}/${id}`;
+            const response = await fetch(contentUrl);
+            const html = await response.text();
+            const m3u8Url = html.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/)?.[0];
+
+            if (!m3u8Url) throw new Error('Не найдена ссылка на поток');
+
+            // 4. Запуск плеера (оригинальный формат)
+            Lampa.Player.play({
+                url: m3u8Url,
+                title: movie.title || movie.name,
+                external: false,
+                source: 'reyohoho',
+                headers: {
+                    'Referer': contentUrl,
+                    'Origin': 'https://reyohoho.github.io'
                 }
+            });
 
-                // 2. Все возможные варианты получения ID
-                const type = movie.name ? 'tv' : 'movie';
-                const id = movie.tmdb_id || movie.kinopoisk_id || 
-                          movie.id || (movie.ids && (movie.ids.tmdb || movie.ids.kinopoisk));
+        } catch (error) {
+            console.error('ReYohoho Error:', error);
+            Lampa.Noty.show('Ошибка ReYohoho');
+        }
+    }
 
-                if (!id) {
-                    console.error('Объект фильма:', movie);
-                    throw new Error(`Не найден ID фильма (проверьте tmdb_id, kinopoisk_id)`);
-                }
-
-                // 3. Получение ссылки на поток
-                const contentUrl = `https://reyohoho.github.io/reyohoho/${type}/${id}`;
-                console.log('Запрос к:', contentUrl);
+    // Инициализация (оригинальный рабочий вариант)
+    function initPlugin() {
+        // Добавляем кнопку в оригинальном стиле
+        Lampa.Listener.follow('full', function(e) {
+            if (e.type == 'complite') {
+                const button = `
+                    <div class="full-start__button view--reyohoho">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                            <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                        </svg>
+                        <span>ReYohoho</span>
+                    </div>
+                `;
                 
-                const response = await fetch(contentUrl);
-                if (!response.ok) throw new Error(`HTTP ошибка: ${response.status}`);
-                
-                const html = await response.text();
-                const m3u8Url = html.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/)?.[0];
-                
-                if (!m3u8Url) throw new Error('Не найдена ссылка на поток');
-                console.log("Найден поток:", m3u8Url);
-                
-                // 4. Запуск плеера
-                Lampa.Player.play({
-                    url: m3u8Url,
-                    title: movie.title || movie.name,
-                    external: false,
-                    source: 'reyohoho',
-                    headers: {
-                        'Referer': contentUrl,
-                        'Origin': 'https://reyohoho.github.io'
-                    }
+                const btn = $(button);
+                btn.on('hover:enter', function() {
+                    handleReYohohoPlay(e.data);
                 });
                 
-            } catch (error) {
-                console.error('ReYohoho Error:', error);
-                Lampa.Noty.show('Ошибка при загрузке');
-                
-                // 5. Улучшенный fallback
-                const movie = data?.movie || data?.item || data;
-                const id = movie?.tmdb_id || movie?.kinopoisk_id || movie?.id;
-                if (id) {
-                    const type = movie.name ? 'tv' : 'movie';
-                    const playerUrl = `https://reyohoho.github.io/player.html?id=${id}&type=${type}`;
-                    
-                    Lampa.Player.play({
-                        url: playerUrl,
-                        title: movie.title || movie.name,
-                        external: false
-                    });
-                }
-            }
-        },
-
-        // Остальные обработчики без изменений
-        menu: function() {
-            return {
-                name: 'reyohoho',
-                title: 'ReYohoho',
-                icon: '<svg width="24" height="24"><use xlink:href="#player"/></svg>',
-                handler: this.play.bind(this)
-            };
-        },
-
-        button: function(e) {
-            const button = `
-                <div class="selector__item selector-available" data-type="reyohoho">
-                    <div class="selector__icon">
-                        <svg width="24" height="24"><use xlink:href="#player"/></svg>
-                    </div>
-                    <div class="selector__title">ReYohoho</div>
-                </div>
-            `;
-            
-            const btn = $(button);
-            btn.on('hover:enter', () => this.play(e.data));
-            return btn;
-        }
-    };
-
-    // Инициализация
-    function init() {
-        // Добавляем кнопку в интерфейс
-        Lampa.Listener.follow('full', (e) => {
-            if (e.type === 'complite' && e.data && e.object) {
-                const container = e.object.activity.render().find('.selector__items');
-                if (container.length) {
-                    container.append(ReYohohoHandler.button(e));
-                }
+                // Оригинальное место вставки
+                e.object.activity.render().find('.full-start__buttons').append(btn);
             }
         });
 
-        // Регистрируем обработчик
+        // Регистрация обработчика
         if (Lampa.Player.handler?.add) {
             Lampa.Player.handler.add({
                 name: 'reyohoho',
                 title: 'ReYohoho',
                 priority: 10,
-                handler: ReYohohoHandler.play.bind(ReYohohoHandler)
+                handler: handleReYohohoPlay
             });
         }
     }
 
-    // Запуск плагина
-    if (window.appready) init();
-    else Lampa.Listener.follow('app', (e) => e.type === 'ready' && init());
+    // Запуск
+    if (window.appready) initPlugin();
+    else Lampa.Listener.follow('app', e => e.type == 'ready' && initPlugin());
 
-    console.log('ReYohoho plugin initialized with ID fix');
+    console.log('ReYohoho plugin loaded (fixed ID handling)');
 })();
