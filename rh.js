@@ -1,25 +1,25 @@
 (function(){
-    if(window.__rh_super_plugin) return;
-    window.__rh_super_plugin = true;
+    if(window.__rh_fixed_plugin) return;
+    window.__rh_fixed_plugin = true;
 
-    console.log('[RH SUPER PLUGIN] Initializing');
+    console.log('[RH FIXED PLUGIN] Initializing');
 
     // Конфигурация плагина
     const plugin = {
-        id: "rh_super_plugin",
+        id: "rh_fixed_source",
         name: "RH Видео", 
         type: "movie",
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M18 9.5V6c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-3.5l4 4v-13l-4 4zm-5 6V13H7v2.5L3.5 12 7 8.5V11h6V8.5l3.5 3.5-3.5 3.5z"/></svg>`,
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>`,
         priority: 100
     };
 
-    // Метод для поиска видео
+    // Метод для получения видео
     plugin.source = function(callback, item) {
-        console.log('[RH] Поиск видео для:', item.title);
+        console.log('[RH] Запрос видео для:', item.title);
         
-        // Здесь должен быть ваш код для получения видео
+        // Ваш реальный источник видео
         const videos = [{
-            title: `${item.title} (RH Source)`,
+            title: `${item.title} (RH)`,
             file: 'https://example.com/video.mp4', // Замените на реальный URL
             type: 'mp4',
             quality: '1080p'
@@ -31,56 +31,43 @@
     // Регистрация плагина
     if(!window._plugins) window._plugins = [];
     window._plugins.push(plugin);
-    console.log('[RH] Плагин зарегистрирован');
 
-    // Функция для добавления кнопки
+    // Основная функция добавления кнопки
     const addButton = () => {
-        // Попробуем разные селекторы для разных версий Lampa
-        const selectors = [
-            '.selector__items', // Новая версия
-            '.selectbox', // Старая версия
-            '.source-selector', // Альтернативный вариант
-            '.player__sources' // Еще один возможный вариант
-        ];
-
-        let container = null;
-        for(const selector of selectors) {
-            container = document.querySelector(selector);
-            if(container) break;
-        }
-
-        if(!container) {
-            console.log('[RH] Контейнер не найден, повторная попытка через 1 секунду');
+        // 1. Находим контейнер с кнопкой "Трейлеры"
+        const trailersBtn = document.querySelector('[data-type="trailer"], .selectbox [data-type="trailer"], .selector__item[data-type="trailer"]');
+        
+        if(!trailersBtn) {
+            console.log('[RH] Кнопка трейлеров не найдена, повторная попытка через 1с');
             setTimeout(addButton, 1000);
             return;
         }
 
-        // Проверяем, не добавлена ли уже кнопка
-        if(document.querySelector('[data-type="rh_source"]')) {
-            return;
-        }
+        // 2. Проверяем, не добавлена ли уже наша кнопка
+        if(document.querySelector('[data-type="rh_source"]')) return;
 
-        // Создаем кнопку
-        const button = document.createElement('div');
-        button.className = container.classList.contains('selector__items') 
-            ? 'selector__item' 
-            : 'selectbox__item';
+        // 3. Клонируем кнопку трейлеров для нашего источника
+        const button = trailersBtn.cloneNode(true);
+        
+        // 4. Модифицируем кнопку
         button.dataset.type = 'rh_source';
         button.innerHTML = `
-            <div class="${container.classList.contains('selector__items') 
-                ? 'selector__item-icon' 
-                : 'selectbox__item-icon'}">${plugin.icon}</div>
-            <div class="${container.classList.contains('selector__items') 
-                ? 'selector__item-title' 
-                : 'selectbox__item-title'}">${plugin.name}</div>
+            <div class="${button.classList.contains('selector__item') ? 'selector__item-icon' : 'selectbox__item-icon'}">
+                ${plugin.icon}
+            </div>
+            <div class="${button.classList.contains('selector__item') ? 'selector__item-title' : 'selectbox__item-title'}">
+                ${plugin.name}
+            </div>
         `;
 
-        button.onclick = () => {
-            const card = window.Lampa.Storage.get('card');
+        // 5. Добавляем обработчик клика
+        button.onclick = (e) => {
+            e.stopPropagation();
+            const card = Lampa.Storage.get('card');
             if(card) {
                 plugin.source((videos) => {
                     if(videos.length) {
-                        window.Lampa.Player.play({
+                        Lampa.Player.play({
                             title: card.title,
                             files: videos
                         });
@@ -89,32 +76,35 @@
             }
         };
 
-        // Добавляем кнопку в контейнер
-        container.appendChild(button);
-        console.log('[RH] Кнопка успешно добавлена в интерфейс');
+        // 6. Вставляем кнопку сразу после трейлеров
+        trailersBtn.parentNode.insertBefore(button, trailersBtn.nextSibling);
+        console.log('[RH] Кнопка добавлена рядом с трейлерами');
     };
 
-    // Запускаем добавление кнопки
-    if(typeof Lampa !== 'undefined') {
-        addButton();
-    } else {
-        const checkLampa = setInterval(() => {
-            if(typeof Lampa !== 'undefined') {
-                clearInterval(checkLampa);
-                addButton();
-            }
-        }, 300);
-    }
-
-    // Дополнительная проверка после полной загрузки страницы
-    window.addEventListener('load', () => {
-        setTimeout(addButton, 3000);
-    });
-
-    // Периодическая проверка (на случай динамической загрузки интерфейса)
-    setInterval(() => {
-        if(!document.querySelector('[data-type="rh_source"]')) {
-            addButton();
+    // Запускаем после полной загрузки Lampa
+    const init = () => {
+        if(typeof Lampa === 'undefined') {
+            setTimeout(init, 300);
+            return;
         }
-    }, 5000);
+
+        // Первая попытка
+        addButton();
+
+        // Периодическая проверка (на случай динамического интерфейса)
+        const checkInterval = setInterval(() => {
+            if(!document.querySelector('[data-type="rh_source"]')) {
+                addButton();
+            } else {
+                clearInterval(checkInterval);
+            }
+        }, 2000);
+    };
+
+    // Старт
+    if(document.readyState === 'complete') {
+        init();
+    } else {
+        window.addEventListener('load', init);
+    }
 })();
