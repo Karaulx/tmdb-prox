@@ -1,80 +1,103 @@
-(function(){
-    // Защита от повторного запуска
-    if(window.__rh_button_exists) return;
-    window.__rh_button_exists = true;
+(function() {
+    // Ждем полной загрузки страницы
+    if (document.readyState !== 'complete') {
+        window.addEventListener('load', initButton);
+    } else {
+        setTimeout(initButton, 1000);
+    }
 
-    console.log('[RH PLAYER BUTTON] Initializing');
+    function initButton() {
+        // Проверяем, существует ли уже кнопка
+        if (document.getElementById('rh-player-btn') || window.__rh_button_initialized) {
+            console.log('[RH] Кнопка уже существует');
+            return;
+        }
+        window.__rh_button_initialized = true;
 
-    // Создаем кнопку с максимально высоким z-index и уникальным стилем
-    const btn = document.createElement('button');
-    btn.id = 'rh-player-btn';
-    btn.style.cssText = `
-        position: fixed !important;
-        right: 25px !important;
-        bottom: 100px !important;
-        z-index: 999999 !important;
-        background: linear-gradient(135deg, #ff3c00, #ff006a) !important;
-        color: white !important;
-        padding: 12px 24px !important;
-        border-radius: 50px !important;
-        font-size: 16px !important;
-        font-weight: bold !important;
-        border: none !important;
-        box-shadow: 0 4px 20px rgba(255, 0, 0, 0.3) !important;
-        cursor: pointer !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        transition: transform 0.2s !important;
-    `;
-    
-    // Иконка и текст
-    btn.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 5V19L19 12L8 5Z" fill="white"/>
-        </svg>
-        <span>RH Player</span>
-    `;
+        console.log('[RH] Инициализация кнопки...');
 
-    // Добавляем кнопку в DOM
-    document.body.appendChild(btn);
+        // Создаем кнопку
+        const btn = document.createElement('button');
+        btn.id = 'rh-player-btn';
+        btn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M8 5V19L19 12L8 5Z" fill="white"/>
+            </svg>
+            <span>RH Player</span>
+        `;
+        
+        // Стили с важными !important
+        Object.assign(btn.style, {
+            position: 'fixed',
+            right: '25px',
+            bottom: '100px',
+            'z-index': '999999',
+            background: 'linear-gradient(135deg, #ff3c00, #ff006a)',
+            color: 'white',
+            padding: '12px 24px',
+            'border-radius': '50px',
+            'font-size': '16px',
+            'font-weight': 'bold',
+            border: 'none',
+            'box-shadow': '0 4px 20px rgba(255, 0, 0, 0.3)',
+            cursor: 'pointer',
+            display: 'flex',
+            'align-items': 'center',
+            gap: '8px',
+            transition: 'transform 0.2s'
+        });
 
-    // Анимация при наведении
-    btn.addEventListener('mouseenter', () => {
-        btn.style.transform = 'scale(1.05)';
-    });
-    btn.addEventListener('mouseleave', () => {
-        btn.style.transform = 'scale(1)';
-    });
+        // Добавляем кнопку в DOM
+        document.body.appendChild(btn);
+        console.log('[RH] Кнопка добавлена в DOM');
 
-    // Логика работы кнопки
-    btn.addEventListener('click', () => {
-        try {
-            // Получаем текущий TMDB ID из Lampa
-            const cardData = window.Lampa.Storage.get('card');
-            const tmdbId = cardData?.id;
-            const contentType = cardData?.type || 'movie';
-            
-            if(tmdbId) {
-                const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${tmdbId}&type=${contentType}`;
-                console.log('Opening RH Player:', playUrl);
-                window.open(playUrl, '_blank');
-            } else {
-                alert('TMDB ID not found!\n1. Fully open movie/tv card\n2. Wait for loading\n3. Try again');
+        // Обработчик клика
+        btn.onclick = function() {
+            try {
+                console.log('[RH] Попытка получить данные...');
+                
+                // Альтернативные способы получения ID
+                const getTmdbId = () => {
+                    // 1. Из URL
+                    const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
+                    if (urlMatch) return urlMatch[2];
+                    
+                    // 2. Из глобальных переменных Lampa
+                    try {
+                        if (window.Lampa?.Storage?.get('card')?.id) {
+                            return window.Lampa.Storage.get('card').id;
+                        }
+                    } catch(e) {}
+                    
+                    return null;
+                };
+
+                const tmdbId = getTmdbId();
+                console.log('[RH] TMDB ID:', tmdbId);
+
+                if (tmdbId) {
+                    const contentType = window.location.href.includes('/tv/') ? 'tv' : 'movie';
+                    const playUrl = `https://api4.rhhhhhhh.live/play?tmdb_id=${tmdbId}&type=${contentType}`;
+                    console.log('[RH] Открываю плеер:', playUrl);
+                    window.open(playUrl, '_blank');
+                } else {
+                    alert('Не удалось определить ID контента!\n1. Полностью откройте карточку\n2. Дождитесь загрузки\n3. Попробуйте снова');
+                }
+            } catch(e) {
+                console.error('[RH] Ошибка:', e);
+                alert('Ошибка: ' + e.message);
             }
-        } catch(e) {
-            console.error('RH Player Error:', e);
-            alert('Error: ' + e.message);
-        }
-    });
+        };
 
-    // Защита от удаления кнопки
-    const observer = new MutationObserver(() => {
-        if(!document.getElementById('rh-player-btn')) {
-            document.body.appendChild(btn);
-        }
-    });
-    observer.observe(document.body, { childList: true });
+        // Защита от удаления
+        const observer = new MutationObserver(function(mutations) {
+            if (!document.getElementById('rh-player-btn')) {
+                console.log('[RH] Кнопка удалена, восстанавливаю...');
+                document.body.appendChild(btn);
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
 
-    console.log('[RH PLAYER BUTTON] Ready');
+        console.log('[RH] Кнопка готова к использованию');
+    }
 })();
