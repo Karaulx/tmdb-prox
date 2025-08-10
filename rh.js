@@ -1,110 +1,107 @@
 (function(){
-    if(window.__rh_final_v4) return;
-    window.__rh_final_v4 = true;
+    // Защита от дублирования
+    if(window.__rh_ultimate_v5) return;
+    window.__rh_ultimate_v5 = true;
 
-    console.log('[RH FINAL v4] Initializing');
+    console.log('[RH ULTIMATE v5] Initializing');
 
-    // 1. Конфигурация плагина
-    const config = {
-        id: "rh_final_v4",
-        name: "RH Фильмы", 
-        type: "universal",
-        priority: 1,
-        proxy: 'https://novomih25.duckdns.org:9092/tmdb-api'
+    // Конфигурация плагина
+    const plugin = {
+        id: "rh_ultimate",
+        name: "RH Видео", 
+        type: "movie",
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M18 9.5V6c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v12c0 .55.45 1 1 1h14c.55 0 1-.45 1-1v-3.5l4 4v-13l-4 4zm-5 6V13H7v2.5L3.5 12 7 8.5V11h6V8.5l3.5 3.5-3.5 3.5z"/></svg>`,
+        priority: 100
     };
 
-    // 2. Основной метод поиска
-    config.search = function(query, tmdb_id, callback) {
-        console.log(`[RH] Поиск: ${query} (ID: ${tmdb_id})`);
+    // Метод для поиска видео
+    plugin.source = function(callback, item) {
+        console.log('[RH] Поиск видео для:', item.title);
         
-        fetch(`${this.proxy}/movie/${tmdb_id}/videos`)
-            .then(r => r.json())
-            .then(data => {
-                const results = data.results.map(video => ({
-                    title: `${query} (${video.type})`,
-                    url: video.site === 'YouTube' 
-                        ? `https://youtu.be/${video.key}`
-                        : `${this.proxy}/video/${video.key}`,
-                    quality: video.size > 720 ? '1080p' : '720p',
-                    type: 'video',
-                    tmdb_id: tmdb_id
-                }));
-                callback(results.length ? results : this._getFallback());
-            })
-            .catch(e => {
-                console.error('[RH] Ошибка:', e);
-                callback(this._getFallback());
-            });
-    };
-
-    config._getFallback = function() {
-        return [{
-            title: 'Резервное видео',
-            url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-            quality: '1080p',
-            type: 'video'
+        // Ваш код для получения видео
+        const videos = [{
+            title: `${item.title} (RH Source)`,
+            file: 'https://example.com/video.mp4',
+            type: 'mp4',
+            quality: '1080p'
         }];
+        
+        callback(videos);
     };
 
-    // 3. Регистрация плагина
+    // Регистрация плагина
     if(!window._plugins) window._plugins = [];
-    window._plugins.push(config);
+    window._plugins.push(plugin);
     console.log('[RH] Плагин зарегистрирован');
 
-    // 4. Интеграция с интерфейсом
-    const integrateUI = () => {
-        // Ждем появления кнопки источников
-        const checkButton = () => {
-            const sourcesBtn = document.querySelector('.selectbox [data-type="source"]');
-            const trailersBtn = document.querySelector('.selectbox [data-type="trailer"]');
-            
-            if(sourcesBtn || trailersBtn) {
-                // Создаем свою кнопку
-                const btn = document.createElement('div');
-                btn.className = 'selectbox__item';
-                btn.dataset.type = 'rh_source';
-                btn.innerHTML = `
-                    <div class="selectbox__item-icon">
-                        <svg height="24" viewBox="0 0 24 24" width="24">
-                            <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6z"/>
-                            <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/>
-                        </svg>
-                    </div>
-                    <div class="selectbox__item-title">${config.name}</div>
-                `;
-                
-                btn.onclick = () => {
-                    const card = window.Lampa.Storage.get('card');
-                    if(card) {
-                        config.search(card.title, card.id, results => {
-                            if(results.length) {
-                                window.Lampa.Player.play({
-                                    title: card.title,
-                                    files: results
-                                });
-                            }
+    // Создаем кнопку в интерфейсе
+    const createButton = () => {
+        const container = document.querySelector('.selector__items');
+        if(!container) {
+            setTimeout(createButton, 500);
+            return;
+        }
+
+        // Проверяем, не добавлена ли уже кнопка
+        if(document.querySelector('.selector__item[data-type="rh_source"]')) return;
+
+        const button = document.createElement('div');
+        button.className = 'selector__item';
+        button.dataset.type = 'rh_source';
+        button.innerHTML = `
+            <div class="selector__item-icon">${plugin.icon}</div>
+            <div class="selector__item-title">${plugin.name}</div>
+        `;
+
+        button.onclick = () => {
+            const card = Lampa.Storage.get('card');
+            if(card) {
+                plugin.source((videos) => {
+                    if(videos.length) {
+                        Lampa.Player.play({
+                            title: card.title,
+                            files: videos
                         });
                     }
-                };
-                
-                // Добавляем в список
-                const container = document.querySelector('.selectbox');
-                if(container) {
-                    container.appendChild(btn);
-                    console.log('[RH] Кнопка добавлена в интерфейс');
-                }
-            } else {
-                setTimeout(checkButton, 300);
+                }, card);
             }
         };
-        
-        checkButton();
+
+        container.appendChild(button);
+        console.log('[RH] Кнопка добавлена в интерфейс');
     };
 
-    // 5. Запускаем интеграцию после загрузки
-    if(document.readyState === 'complete') {
-        integrateUI();
+    // Запускаем создание кнопки
+    if(typeof Lampa !== 'undefined') {
+        createButton();
     } else {
-        window.addEventListener('load', integrateUI);
+        const checkLampa = setInterval(() => {
+            if(typeof Lampa !== 'undefined') {
+                clearInterval(checkLampa);
+                createButton();
+            }
+        }, 300);
     }
+
+    // Альтернативный метод для старых версий Lampa
+    const fallbackMethod = () => {
+        const sourceBtn = document.querySelector('[data-type="source"]');
+        if(sourceBtn) {
+            const rhBtn = sourceBtn.cloneNode(true);
+            rhBtn.dataset.type = 'rh_source';
+            rhBtn.querySelector('.selectbox__item-title').textContent = plugin.name;
+            rhBtn.onclick = () => {
+                const card = Lampa.Storage.get('card');
+                if(card) plugin.source((v) => v.length && Lampa.Player.play({
+                    title: card.title,
+                    files: v
+                }), card);
+            };
+            sourceBtn.after(rhBtn);
+        } else {
+            setTimeout(fallbackMethod, 500);
+        }
+    };
+
+    setTimeout(fallbackMethod, 2000);
 })();
