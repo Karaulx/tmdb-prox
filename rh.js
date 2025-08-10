@@ -5,7 +5,7 @@
         window.plugin_reyohoho_ready = true;
 
         function add() {
-            // Добавляем красивую кнопку в интерфейс
+            // Добавляем кнопку в интерфейс
             Lampa.Listener.follow('full', function(e) {
                 if (e.type == 'complite') {
                     var button = `
@@ -18,7 +18,7 @@
                     
                     var btn = $(button);
                     btn.on('hover:enter', function() {
-                        handleReYohohoPlay(e.data);
+                        handlePlayback(e.data.movie);
                     });
                     
                     if (e.data && e.object) {
@@ -27,24 +27,18 @@
                 }
             });
 
-            // Функция обработки воспроизведения
-            async function handleReYohohoPlay(data) {
-                const movie = data.movie;
-                const type = movie.name ? 'tv' : 'movie';
-                
+            // Основная функция воспроизведения
+            async function handlePlayback(movie) {
                 try {
-                    // Формируем URL для парсинга
-                    const contentUrl = `https://reyohoho.github.io/${type}/${movie.tmdb_id || movie.kinopoisk_id}`;
+                    if (!movie) throw new Error('Нет данных о фильме');
                     
-                    // Получаем HTML страницы
-                    const html = await fetch(contentUrl).then(r => r.text());
+                    const id = movie.tmdb_id || movie.kinopoisk_id;
+                    if (!id) throw new Error('ID контента не найден');
                     
-                    // Извлекаем ссылку на видео
-                    const videoUrl = extractVideoUrl(html);
-                    if (!videoUrl) throw new Error('Ссылка на видео не найдена');
+                    const type = movie.name ? 'tv' : 'movie';
+                    const playerUrl = buildPlayerUrl(id, type, movie);
                     
-                    // Запускаем плеер
-                    Lampa.Player.play(videoUrl, {
+                    Lampa.Player.play(playerUrl, {
                         title: movie.title || movie.name,
                         external: false,
                         headers: {
@@ -54,33 +48,24 @@
                     });
                     
                 } catch (error) {
-                    console.error('ReYohoho error:', error);
-                    Lampa.Noty.show('Не удалось начать воспроизведение');
-                    
-                    // Fallback: пытаемся открыть через iframe
-                    const playerUrl = `https://reyohoho.github.io/player.html?id=${movie.tmdb_id || movie.kinopoisk_id}&type=${type}`;
-                    Lampa.Player.play(playerUrl, {
-                        title: movie.title || movie.name,
-                        external: false
-                    });
+                    console.error('ReYohoho playback error:', error);
+                    Lampa.Noty.show('Ошибка запуска: ' + (error.message || 'неизвестная ошибка'));
                 }
             }
 
-            // Функция извлечения ссылки на видео
-            function extractVideoUrl(html) {
-                // Ищем m3u8 ссылку
-                const m3u8Match = html.match(/https?:\/\/[^\s"']+\.m3u8[^\s"']*/i);
-                if (m3u8Match) return m3u8Match[0];
+            // Формирование URL плеера
+            function buildPlayerUrl(id, type, movie) {
+                let url = `https://reyohoho.github.io/player.html?id=${id}&type=${type}`;
                 
-                // Ищем iframe с видео
-                const iframeMatch = html.match(/<iframe[^>]+src="([^"]+)"/i);
-                if (iframeMatch) return iframeMatch[1];
+                if (type === 'tv') {
+                    url += `&season=1&episode=1`;
+                }
                 
-                return null;
+                return url;
             }
         }
 
-        // Запуск плагина
+        // Инициализация плагина
         if (window.appready) add(); 
         else {
             Lampa.Listener.follow('app', function(e) {
