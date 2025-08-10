@@ -5,42 +5,73 @@
     window.plugin_reyohoho_ready = true;
 
     const ReYohohoHandler = {
+        cache: {}, // Кеш для хранения найденных ссылок
+
+        async extractStream(id, type) {
+            // 1. Проверка кеша
+            if (this.cache[`${type}_${id}`]) {
+                console.log('Используем кешированную ссылку');
+                return this.cache[`${type}_${id}`];
+            }
+
+            // 2. Прямой запрос к API (если доступен)
+            try {
+                const apiUrl = `https://api.reyohoho.live/stream?tmdb_id=${id}&type=${type}`;
+                const response = await fetch(apiUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.url) {
+                        this.cache[`${type}_${id}`] = data.url;
+                        return data.url;
+                    }
+                }
+            } catch (e) {
+                console.log('API недоступен, пробуем парсинг страницы');
+            }
+
+            // 3. Парсинг HTML страницы
+            const pageUrl = `https://reyohoho.github.io/reyohoho/${type}/${id}`;
+            try {
+                const response = await fetch(pageUrl);
+                const html = await response.text();
+                
+                // Ищем HLS или MP4
+                const m3u8Match = html.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/);
+                const mp4Match = html.match(/(https?:\/\/[^\s"']+\.mp4[^\s"']*)/);
+                
+                const streamUrl = m3u8Match?.[0] || mp4Match?.[0];
+                if (streamUrl) {
+                    this.cache[`${type}_${id}`] = streamUrl;
+                }
+                return streamUrl;
+            } catch (e) {
+                console.error('Ошибка парсинга:', e);
+                return null;
+            }
+        },
+
         play: async function(data) {
             try {
-                // 1. Проверка и получение данных фильма
-                if (!data?.movie) {
-                    throw new Error('No movie data provided');
-                }
+                if (!data?.movie) throw new Error('Нет данных о фильме');
 
                 const movie = data.movie;
                 const type = movie.name ? 'tv' : 'movie';
                 const id = movie.tmdb_id || movie.kinopoisk_id;
+                if (!id) throw new Error('Не найден ID фильма');
 
-                if (!id) {
-                    throw new Error('No valid movie ID found');
-                }
+                // Получаем ссылку через новый метод
+                const streamUrl = await this.extractStream(id, type);
+                if (!streamUrl) throw new Error('Не удалось получить ссылку на поток');
 
-                const contentUrl = `https://reyohoho.github.io/reyohoho/${type}/${id}`;
-                console.log('Fetching ReYohoho URL:', contentUrl);
+                console.log("Найден поток:", streamUrl);
                 
-                // 2. Новая логика получения m3u8
-                const response = await fetch(contentUrl);
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                
-                const html = await response.text();
-                const m3u8Url = html.match(/(https?:\/\/[^\s]+\.m3u8)/)?.[0];
-                
-                if (!m3u8Url) throw new Error('m3u8 stream not found');
-                console.log("Found stream:", m3u8Url);
-                
-                // 3. Запуск плеера с правильными параметрами
                 Lampa.Player.play({
-                    url: m3u8Url,
+                    url: streamUrl,
                     title: movie.title || movie.name,
                     external: false,
                     source: 'reyohoho',
                     headers: {
-                        'Referer': contentUrl,
+                        'Referer': 'https://reyohoho.github.io/',
                         'Origin': 'https://reyohoho.github.io'
                     }
                 });
@@ -49,7 +80,7 @@
                 console.error('ReYohoho Error:', error);
                 Lampa.Noty.show('Ошибка ReYohoho');
                 
-                // 4. Fallback на player.html если есть ID
+                // Fallback
                 if (data?.movie && (data.movie.tmdb_id || data.movie.kinopoisk_id)) {
                     const type = data.movie.name ? 'tv' : 'movie';
                     const id = data.movie.tmdb_id || data.movie.kinopoisk_id;
@@ -64,7 +95,6 @@
             }
         },
 
-        // Остальные обработчики без изменений
         menu: function() {
             return {
                 name: 'reyohoho',
@@ -90,7 +120,6 @@
         }
     };
 
-    // Инициализация без изменений
     function init() {
         Lampa.Listener.follow('full', (e) => {
             if (e.type === 'complite' && e.data && e.object) {
@@ -118,5 +147,5 @@
     if (window.appready) init();
     else Lampa.Listener.follow('app', (e) => e.type === 'ready' && init());
 
-    console.log('ReYohoho plugin initialized with m3u8 parser');
+    console.log('ReYohoho plugin initialized with improved link handling');
 })();
