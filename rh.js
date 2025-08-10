@@ -1,92 +1,139 @@
 (function(){
     // Защита от дублирования
-    if(window._rh_custom_plugin) return;
-    window._rh_custom_plugin = true;
+    if(window._rh_final_plugin) return;
+    window._rh_final_plugin = true;
 
-    console.log('[RH CUSTOM] Plugin initialization');
+    console.log('[RH FINAL] Plugin initialization');
 
-    // Ждем полной загрузки Lampa
-    function waitForLampa(callback) {
+    // Ждем готовности Lampa с таймаутом
+    function waitForLampa(callback, attempts = 0) {
         if(window.Lampa && window.Lampa.Plugins) {
             callback();
+        } else if(attempts < 30) {
+            setTimeout(() => waitForLampa(callback, attempts + 1), 100);
         } else {
-            setTimeout(() => waitForLampa(callback), 100);
+            console.error('[RH FINAL] Lampa not found');
         }
     }
 
     waitForLampa(() => {
-        console.log('[RH CUSTOM] Lampa ready');
+        console.log('[RH FINAL] Lampa ready, creating source');
 
-        // Создаем кастомный источник
-        const CustomSource = {
-            name: "Ваш сайт", // Название, которое будет отображаться
-            id: "your_site_source",
-            type: "movie", // Может быть "movie" или "tv"
-            version: "1.0",
-
-            // Основной метод для загрузки контента
+        // Создаем источник с улучшенным отображением
+        const FinalSource = {
+            name: "Ваш источник", // Будет видно в интерфейсе
+            id: "your_final_source",
+            type: "universal", // Для фильмов и сериалов
+            version: "2.1",
+            icon: "https://reyohoho-gitlab.vercel.app/favicon.ico", // Ваша иконка
+            
+            // Главный метод для загрузки контента
             sources: function(item, callback) {
-                console.log('[RH CUSTOM] Loading for:', item.title);
+                console.log('[RH FINAL] Requesting sources for:', item.title);
+                
+                // Формируем умный запрос
+                const params = {
+                    q: item.title,
+                    tmdb_id: item.id,
+                    year: item.year,
+                    type: item.type || (item.seasons ? 'tv' : 'movie'),
+                    clean_title: item.title.replace(/[^\w\sа-яА-Я]/gi, '').trim()
+                };
 
-                // Формируем запрос к вашему API
-                const apiUrl = new URL('https://reyohoho-gitlab.vercel.app/api/search');
-                apiUrl.searchParams.set('q', item.title);
-                apiUrl.searchParams.set('tmdb_id', item.id);
-                apiUrl.searchParams.set('year', item.year || '');
-
-                fetch(apiUrl)
+                fetch(`https://reyohoho-gitlab.vercel.app/api/search?` + new URLSearchParams(params))
                     .then(response => {
                         if(!response.ok) throw new Error('HTTP ' + response.status);
                         return response.json();
                     })
                     .then(data => {
-                        // Форматируем ответ для Lampa
-                        const sources = Array.isArray(data) ? data.map(source => ({
-                            title: source.title || item.title,
-                            file: source.url,
-                            quality: source.quality || 'HD',
-                            // Дополнительные параметры для отображения
-                            provider: 'Ваш сайт', // Будет показан в интерфейсе
-                            external: {
-                                name: 'Ваш сайт',
-                                link: 'https://reyohoho-gitlab.vercel.app' // Ссылка на ваш сайт
-                            }
-                        })) : [];
+                        // Форматируем ответ специально для Lampa
+                        const formatted = {
+                            // Метаданные для отображения
+                            meta: {
+                                source: "Ваш источник",
+                                link: "https://reyohoho-gitlab.vercel.app",
+                                icon: this.icon
+                            },
+                            // Контент для плеера
+                            movie: [],
+                            tv: []
+                        };
 
-                        console.log('[RH CUSTOM] Found sources:', sources.length);
-                        callback(sources);
+                        if(Array.isArray(data)) {
+                            data.forEach(source => {
+                                const result = {
+                                    title: source.title || item.title,
+                                    file: source.url,
+                                    quality: source.quality || 'HD',
+                                    // Дополнительные поля
+                                    provider: "Ваш источник",
+                                    external: {
+                                        name: "Перейти на сайт",
+                                        link: "https://reyohoho-gitlab.vercel.app"
+                                    }
+                                };
+
+                                if(params.type === 'movie') {
+                                    formatted.movie.push(result);
+                                } else {
+                                    formatted.tv.push({
+                                        season: source.season || 1,
+                                        episodes: [{
+                                            episode: source.episode || 1,
+                                            files: [result]
+                                        }]
+                                    });
+                                }
+                            });
+                        }
+
+                        console.log('[RH FINAL] Prepared data:', formatted);
+                        callback(formatted);
                     })
                     .catch(error => {
-                        console.error('[RH CUSTOM] Error:', error);
-                        callback([]);
+                        console.error('[RH FINAL] Error:', error);
+                        callback({movie: [], tv: [], meta: this.meta});
                     });
             },
 
-            // Метод для отображения в интерфейсе
+            // Явное указание для отображения в UI
             display: {
-                name: "Ваш сайт",
-                icon: "https://reyohoho-gitlab.vercel.app/favicon.ico" // Иконка для отображения
+                name: "Ваш источник",
+                icon: this.icon,
+                description: "Контент предоставлен вашим сайтом"
             }
         };
 
-        // Регистрируем источник
+        // Принудительная регистрация во всех случаях
         try {
-            // Для новых версий Lampa
-            if(window.Lampa.Plugins.register) {
-                window.Lampa.Plugins.register(CustomSource);
-            } 
-            // Для старых версий
-            else if(Array.isArray(window.Lampa.Plugins)) {
-                window.Lampa.Plugins.push(CustomSource);
+            if(typeof window.Lampa.Plugins.register === 'function') {
+                window.Lampa.Plugins.register(FinalSource);
+            } else {
+                if(!Array.isArray(window.Lampa.Plugins)) {
+                    window.Lampa.Plugins = [];
+                }
+                window.Lampa.Plugins.push(FinalSource);
             }
-            // Экстренный fallback
-            else {
-                window.Lampa.Plugins = [CustomSource];
-            }
-
-            console.log('[RH CUSTOM] Source registered successfully');
+            console.log('[RH FINAL] Source fully registered');
         } catch(e) {
-            console.error('[RH CUSTOM] Registration error:', e);
+            console.error('[RH FINAL] Registration failed:', e);
         }
     });
+
+    // Дублирующая регистрация через 3 секунды для надежности
+    setTimeout(() => {
+        if(window.Lampa && !window._rh_final_registered) {
+            window._rh_final_registered = true;
+            console.log('[RH FINAL] Additional registration');
+            const backup = {
+                name: "Ваш источник",
+                sources: () => ({movie: [], tv: []}),
+                display: {
+                    name: "Ваш источник",
+                    icon: "https://reyohoho-gitlab.vercel.app/favicon.ico"
+                }
+            };
+            window.Lampa.Plugins.push(backup);
+        }
+    }, 3000);
 })();
