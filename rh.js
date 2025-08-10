@@ -1,19 +1,23 @@
 (function() {
     // Проверка на повторную загрузку
-    if (window.ReYohohoPlugin) return;
-    window.ReYohohoPlugin = true;
+    if (window.ReYohohoPluginV3) return;
+    window.ReYohohoPluginV3 = true;
 
-    // Ожидаем загрузки Lampa (аналог Lampa.ready для 2.4.6)
-    function waitForLampa(callback) {
-        if (window.Lampa && Lampa.Player) {
+    console.log('ReYohoho plugin loading for Lampa 2.4.6...');
+
+    // Функция ожидания загрузки Lampa
+    function waitForLampa(callback, attempts = 0) {
+        if (window.Lampa && window.Lampa.Player) {
             callback();
+        } else if (attempts < 10) {
+            setTimeout(() => waitForLampa(callback, attempts + 1), 300);
         } else {
-            setTimeout(() => waitForLampa(callback), 100);
+            console.error('Lampa API не загрузилось после 10 попыток');
         }
     }
 
     waitForLampa(function() {
-        // Оригинальная функция извлечения URL
+        // Функция извлечения URL видео (оригинальная)
         function extractVideoUrl(html) {
             const regex = /(https?:\/\/[^\s"'<>]+\.(m3u8|mp4|mkv|webm)[^\s"'<>]*)/i;
             const match = html.match(regex);
@@ -27,8 +31,8 @@
             const id = movie.tmdb_id || movie.kinopoisk_id;
             
             try {
-                // Оригинальный URL-формат
                 const contentUrl = `https://reyohoho.github.io/${type}/${id}`;
+                console.log('Fetching:', contentUrl);
                 
                 const response = await fetch(contentUrl);
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -61,21 +65,42 @@
             }
         }
 
-        // Регистрация обработчика (адаптация для 2.4.6)
-        if (Lampa.Player.addHandler) {
-            Lampa.Player.addHandler({
-                name: 'reyohoho',
-                priority: 10,
-                handler: handleReYohohoPlay
-            });
-        } else if (Lampa.Player.handler && Lampa.Player.handler.add) {
-            Lampa.Player.handler.add({
-                name: 'reyohoho',
-                priority: 10,
-                handler: handleReYohohoPlay
-            });
-        } else {
-            console.error('Не удалось зарегистрировать обработчик в Lampa 2.4.6');
+        // Специальная регистрация для Lampa 2.4.6
+        try {
+            // Попытка 1: Стандартный метод
+            if (typeof Lampa.Player.addHandler === 'function') {
+                Lampa.Player.addHandler({
+                    name: 'reyohoho',
+                    priority: 10,
+                    handler: handleReYohohoPlay
+                });
+                console.log('Обработчик зарегистрирован через addHandler');
+            }
+            // Попытка 2: Альтернативный метод для 2.4.6
+            else if (Lampa.Player.handler && typeof Lampa.Player.handler.add === 'function') {
+                Lampa.Player.handler.add({
+                    name: 'reyohoho',
+                    priority: 10,
+                    handler: handleReYohohoPlay
+                });
+                console.log('Обработчик зарегистрирован через handler.add');
+            }
+            // Попытка 3: Прямое добавление в массив обработчиков
+            else if (Array.isArray(Lampa.Player.handlers)) {
+                Lampa.Player.handlers.push({
+                    name: 'reyohoho',
+                    priority: 10,
+                    handler: handleReYohohoPlay
+                });
+                console.log('Обработчик добавлен напрямую в handlers array');
+            } else {
+                console.error('Не найдено ни одного способа регистрации обработчика');
+                return;
+            }
+            
+            console.log('ReYohoho plugin успешно загружен!');
+        } catch (e) {
+            console.error('Ошибка регистрации плагина:', e);
         }
     });
 })();
