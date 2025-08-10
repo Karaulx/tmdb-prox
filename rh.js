@@ -1,96 +1,64 @@
 (function() {
-  // Защита от дублирования
-  if (window.__reyohoho_plugin_v2) return;
-  window.__reyohoho_plugin_v2 = true;
+  // Проверка дублирования
+  if (window.__lampa_reyohoho_plugin) return;
+  window.__lampa_reyohoho_plugin = true;
 
-  class ReYohohoProvider {
+  // Основной класс провайдера
+  class ReYohohoSource {
     constructor() {
-      this.name = 'ReYohoho Direct';
-      this.id = 'reyohoho_direct';
+      this.name = 'ReYohoho';
       this.type = 'plugin';
-      this.active = true;
-      this.settings = {
-        api_url: 'https://api.reyohoho.live/v3'  // Основной API endpoint
+      this.supports = ['movie', 'tv']; // Поддерживаемые типы контента
+      this.icons = {
+        dark: 'https://reyohoho.github.io/favicon.ico',
+        light: 'https://reyohoho.github.io/favicon.ico'
       };
     }
 
     async getUrl(params) {
       try {
-        // 1. Получаем TMDB ID из параметров
+        // Получаем TMDB ID из параметров
         const tmdbId = params.tmdb_id;
-        if (!tmdbId) {
-          console.error('TMDB ID не передан');
-          return null;
+        const contentType = params.type || 'movie';
+
+        if (!tmdbId) throw new Error('TMDB ID не найден');
+
+        // Формируем URL для плеера ReYohoho
+        const playerUrl = `https://reyohoho.github.io/player.html?tmdb_id=${tmdbId}&type=${contentType}`;
+
+        // Для сериалов добавляем сезон и эпизод
+        if (contentType === 'tv') {
+          playerUrl += `&season=${params.season || 1}&episode=${params.episode || 1}`;
         }
 
-        // 2. Запрашиваем поток через API
-        const streamData = await this.fetchStream(tmdbId, params.type || 'movie');
-        
-        if (!streamData?.url) {
-          console.error('Не удалось получить ссылку на поток');
-          return null;
-        }
-
-        // 3. Возвращаем данные для плеера
         return {
-          url: streamData.url,
+          url: playerUrl,
           name: this.name,
-          title: params.title || 'Фильм',
-          quality: streamData.quality || 'auto',
-          headers: {
-            'Referer': 'https://reyohoho.github.io/',
-            'Origin': 'https://reyohoho.github.io'
-          }
+          title: params.title,
+          external: false // Используем внутренний плеер Lampa
         };
 
       } catch (e) {
-        console.error('Ошибка в ReYohohoProvider:', e);
+        console.error('ReYohohoSource error:', e);
         return null;
       }
-    }
-
-    async fetchStream(tmdbId, contentType) {
-      // Пробуем разные API endpoints
-      const endpoints = [
-        `${this.settings.api_url}/stream?tmdb_id=${tmdbId}&type=${contentType}`,
-        `https://reyohoho-api.vercel.app/play?id=${tmdbId}&source=tmdb`
-      ];
-
-      for (const endpoint of endpoints) {
-        try {
-          const response = await fetch(endpoint, {
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.url) return data;
-          }
-        } catch (e) {
-          console.log(`Ошибка для ${endpoint}:`, e.message);
-        }
-      }
-
-      throw new Error('Все API endpoints недоступны');
     }
   }
 
   // Регистрация провайдера
-  const register = () => {
-    if (typeof window.plugin_provider === 'function') {
-      window.plugin_provider(new ReYohohoProvider());
-      console.log('ReYohohoProvider успешно зарегистрирован');
+  const registerProvider = () => {
+    if (window.plugin_provider) {
+      window.plugin_provider(new ReYohohoSource());
+      console.log('ReYohoho provider registered');
     } else {
-      console.warn('Lampa API не доступно');
+      console.warn('Lampa plugin system not available');
     }
   };
 
-  // Автоматическая регистрация
+  // Автоматическая регистрация при загрузке
   if (document.readyState === 'complete') {
-    register();
+    registerProvider();
   } else {
-    window.addEventListener('load', register);
+    window.addEventListener('load', registerProvider);
   }
 })();
