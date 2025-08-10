@@ -1,159 +1,111 @@
 (function(){
-    if(window.__rh_universal_loader) return;
-    window.__rh_universal_loader = true;
+    if(window.__rh_perfect_loader) return;
+    window.__rh_perfect_loader = true;
 
-    console.log('[RH UNIVERSAL LOADER] Initializing');
+    console.log('[RH PERFECT LOADER] Initializing');
 
     // 1. Конфигурация
     const config = {
         name: "▶️ RH Плеер",
         apiBase: "https://api4.rhhhhhhh.live",
-        btnId: "rh-universal-btn",
+        btnId: "rh-perfect-btn",
         retryDelay: 500,
-        maxRetries: 30
+        maxRetries: 20
     };
 
-    // 2. Создаем кнопку
+    // 2. Создаем кнопку в стиле Lampa
     const createButton = () => {
-        const btn = document.createElement('button');
+        const btn = document.createElement('div');
         btn.id = config.btnId;
-        btn.style.cssText = `
-            position: fixed !important;
-            right: 20px !important;
-            bottom: 80px !important;
-            z-index: 99999 !important;
-            background: #FF0000 !important;
-            color: white !important;
-            padding: 12px 18px !important;
-            border-radius: 8px !important;
-            font-size: 16px !important;
-            font-weight: bold !important;
-            cursor: pointer !important;
-            border: none !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+        btn.className = 'selector__item'; // Используем классы Lampa
+        btn.innerHTML = `
+            <div class="selector__item-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#FF0000">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+            </div>
+            <div class="selector__item-title">${config.name}</div>
         `;
-        document.body.appendChild(btn);
+        btn.style.cssText = 'margin: 5px; cursor: pointer;';
         return btn;
     };
 
-    // 3. Получаем ID из всех возможных источников
-    const getContentId = () => {
-        // Проверяем разные форматы ID
-        const idFormats = [
-            // TMDB ID
-            () => {
-                const card = window.Lampa?.Storage?.get('card');
-                if(card?.id) return {id: card.id, type: 'tmdb'};
-                return null;
-            },
-            
-            // Kinopoisk ID из URL API
-            () => {
-                if(window._last_api_request) {
-                    const kpMatch = window._last_api_request.match(/kp_info2\/(\d+)/);
-                    if(kpMatch) return {id: kpMatch[1], type: 'kp'};
-                }
-                return null;
-            },
-            
-            // IMDB ID из URL API
-            () => {
-                if(window._last_api_request) {
-                    const imdbMatch = window._last_api_request.match(/imdb_to_kp\/(tt\d+)/);
-                    if(imdbMatch) return {id: imdbMatch[1], type: 'imdb'};
-                }
-                return null;
-            },
-            
-            // Из URL страницы
-            () => {
-                const urlMatch = window.location.href.match(/\/(movie|tv)\/(\d+)/);
-                if(urlMatch) return {id: urlMatch[2], type: 'tmdb'};
-                return null;
+    // 3. Получаем точные данные карточки
+    const getCardData = () => {
+        try {
+            // Основной способ через Lampa
+            const card = window.Lampa.Storage.get('card');
+            if(card?.id) {
+                return {
+                    id: card.id,
+                    type: card.type || 'movie',
+                    season: card.season,
+                    episode: card.episode,
+                    title: card.title || ''
+                };
             }
-        ];
-
-        // Пробуем все форматы по очереди
-        for(const format of idFormats) {
-            try {
-                const result = format();
-                if(result?.id) return result;
-            } catch(e) {
-                console.error('Error checking ID format:', e);
-            }
+        } catch(e) {
+            console.error('Lampa Storage error:', e);
         }
-
         return null;
     };
 
-    // 4. Перехватчик API запросов
-    const hookApiRequests = () => {
-        if(window.XMLHttpRequest.isHooked) return;
+    // 4. Формируем правильный URL для Lampa Player
+    const getLampaPlayerUrl = (card) => {
+        if(!card) return null;
 
-        const originalOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url) {
-            if(url.includes(config.apiBase)) {
-                window._last_api_request = url;
-                console.log('API request detected:', url);
-            }
-            return originalOpen.apply(this, arguments);
+        // Формат для Lampa:
+        // {url: string, title: string, referer: string}
+        return {
+            url: `${config.apiBase}/play?tmdb_id=${card.id}&type=${card.type}` +
+                 (card.season ? `&season=${card.season}` : '') +
+                 (card.episode ? `&episode=${card.episode}` : ''),
+            title: card.title,
+            referer: window.location.href
         };
-
-        window.XMLHttpRequest.isHooked = true;
     };
 
-    // 5. Формирование правильного URL
-    const getPlayUrl = (idInfo) => {
-        if(!idInfo) return null;
-
-        switch(idInfo.type) {
-            case 'tmdb':
-                return `${config.apiBase}/play?tmdb_id=${idInfo.id}`;
-            case 'kp':
-                return `${config.apiBase}/play?kp_id=${idInfo.id}`;
-            case 'imdb':
-                return `${config.apiBase}/play?imdb_id=${idInfo.id}`;
-            default:
-                return null;
-        }
-    };
-
-    // 6. Основная логика
+    // 5. Встраиваем кнопку в интерфейс Lampa
     const init = (retryCount = 0) => {
-        hookApiRequests();
-        const btn = document.getElementById(config.btnId) || createButton();
+        const card = getCardData();
+        const playerData = getLampaPlayerUrl(card);
 
-        const idInfo = getContentId();
-        const playUrl = getPlayUrl(idInfo);
-
-        if(playUrl) {
-            btn.textContent = config.name;
+        // Ищем стандартный контейнер кнопок
+        const container = document.querySelector('.selector__items, .full__buttons');
+        
+        if(container && playerData) {
+            const btn = createButton();
+            
+            // Обработчик клика для Lampa Player
             btn.onclick = () => {
-                console.log('Opening:', playUrl);
-                window.open(playUrl, '_blank');
+                console.log('Starting player with:', playerData);
+                window.Lampa.Player.play({
+                    title: playerData.title,
+                    files: [{
+                        title: playerData.title,
+                        file: playerData.url,
+                        type: 'video/mp4' // Или другой тип
+                    }]
+                });
             };
-            btn.style.display = 'block';
-            console.log('Successfully initialized with ID:', idInfo);
+
+            // Вставляем кнопку
+            container.appendChild(btn);
+            console.log('Button successfully added');
             return;
         }
 
         if(retryCount < config.maxRetries) {
             setTimeout(() => init(retryCount + 1), config.retryDelay);
         } else {
-            btn.textContent = '❌ Ошибка загрузки';
-            btn.onclick = () => alert('Пожалуйста, полностью откройте карточку и попробуйте снова');
-            btn.style.display = 'block';
-            console.error('Failed to detect content ID');
+            console.error('Failed to initialize after retries');
         }
     };
 
-    // 7. Запуск
+    // 6. Запускаем
     if(document.readyState === 'complete') {
         setTimeout(init, 1000);
     } else {
         window.addEventListener('load', () => setTimeout(init, 1000));
     }
-
-    // Дублирующий запуск через 3 секунды
-    setTimeout(init, 3000);
 })();
