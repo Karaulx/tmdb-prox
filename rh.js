@@ -1,82 +1,114 @@
 (function() {
     // Защита от повторной загрузки
-    if (window.ReYohohoPluginV2Loaded) return;
-    window.ReYohohoPluginV2Loaded = true;
+    if (window.ReYohohoPluginLoaded) return;
+    window.ReYohohoPluginLoaded = true;
 
-    // Ждем полной загрузки Lampa (альтернатива Lampa.ready)
-    function waitForLampa(callback) {
-        if (window.Lampa && Lampa.Player) {
-            callback();
+    console.log('ReYohoho plugin init for Lampa 2.4.6');
+
+    // Альтернатива Lampa.ready для старых версий
+    function checkLampaAPI() {
+        // Проверяем доступность нужных методов
+        if (window.Lampa && window.Lampa.Player && window.Lampa.Player.addHandler) {
+            initPlugin();
+        } else if (window.Lampa && window.Lampa.Player && window.Lampa.Player.handler) {
+            initPluginAlternative();
         } else {
-            setTimeout(function() {
-                waitForLampa(callback);
-            }, 100);
+            setTimeout(checkLampaAPI, 200);
         }
     }
 
-    waitForLampa(function() {
-        // Функция извлечения URL видео
-        function extractVideoUrl(html) {
-            try {
-                // Ищем ссылки на видеофайлы
-                const regex = /(https?:\/\/[^\s"'<>]+\.(m3u8|mp4|mkv|webm)[^\s"'<>]*)/i;
-                const match = html.match(regex);
-                return match ? match[0] : null;
-            } catch (e) {
-                return null;
-            }
-        }
+    // Основная инициализация (для стандартного API)
+    function initPlugin() {
+        console.log('Инициализация через Lampa.Player.addHandler');
+        
+        Lampa.Player.addHandler({
+            name: 'reyohoho',
+            priority: 10,
+            handler: handleReYohohoPlay
+        });
+    }
 
-        // Основной обработчик
-        async function handleReYohohoPlay(data) {
-            // Пропускаем если это не наш контент
-            if (data.source && data.source === 'reyohoho') return false;
+    // Альтернативная инициализация (для нестандартного API)
+    function initPluginAlternative() {
+        console.log('Инициализация через альтернативный метод');
+        
+        Lampa.Player.handler.add({
+            name: 'reyohoho',
+            priority: 10,
+            handler: handleReYohohoPlay
+        });
+    }
+
+    // Функция извлечения URL видео
+    function extractVideoUrl(html) {
+        try {
+            // Улучшенное регулярное выражение для поиска видео
+            const regex = /(https?:\/\/[^\s"'<>]+\.(?:m3u8|mp4|mkv|webm)(?:\?[^\s"'<>]*)?)/i;
+            const match = html.match(regex);
+            return match ? match[0] : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Основной обработчик воспроизведения
+    async function handleReYohohoPlay(data) {
+        // Пропускаем если это не наш контент
+        if (data.source && data.source === 'reyohoho') return false;
+        
+        console.log('ReYohoho обработчик запущен для:', data.movie);
+        
+        const movie = data.movie;
+        const type = movie.name ? 'tv' : 'movie';
+        const id = movie.tmdb_id || movie.kinopoisk_id;
+        
+        try {
+            // Пробуем получить прямую ссылку
+            const contentUrl = `https://reyohoho.github.io/${type}/${id}`;
+            console.log('Загрузка страницы:', contentUrl);
             
-            const movie = data.movie;
-            const type = movie.name ? 'tv' : 'movie';
-            const id = movie.tmdb_id || movie.kinopoisk_id;
+            const response = await fetch(contentUrl);
+            if (!response.ok) throw new Error(`HTTP статус: ${response.status}`);
             
+            const html = await response.text();
+            const videoUrl = extractVideoUrl(html);
+            
+            if (!videoUrl) throw new Error('Видео URL не найден в HTML');
+            
+            console.log('Найден видео URL:', videoUrl);
+            
+            // Формат вызова для Lampa 2.4.6
+            return Lampa.Player.play({
+                url: videoUrl,
+                title: movie.title || movie.name,
+                external: false,
+                source: 'reyohoho',
+                headers: {
+                    'Referer': contentUrl,
+                    'Origin': 'https://reyohoho.github.io'
+                }
+            });
+        } catch (error) {
+            console.error('ReYohoho ошибка:', error);
+            
+            // Fallback вариант через iframe
             try {
-                // Пробуем получить прямую ссылку
-                const contentUrl = `https://reyohoho.github.io/${type}/${id}`;
-                const response = await fetch(contentUrl);
-                if (!response.ok) throw new Error('Ошибка загрузки страницы');
+                const playerUrl = `https://reyohoho.github.io/player.html?id=${id}&type=${type}`;
+                console.log('Пробуем fallback через:', playerUrl);
                 
-                const html = await response.text();
-                const videoUrl = extractVideoUrl(html);
-                if (!videoUrl) throw new Error('Видео URL не найден');
-                
-                // Формат вызова для Lampa 2.4.6
                 return Lampa.Player.play({
-                    url: videoUrl,
+                    url: playerUrl,
                     title: movie.title || movie.name,
                     external: false,
-                    source: 'reyohoho',
-                    headers: {
-                        'Referer': contentUrl,
-                        'Origin': 'https://reyohoho.github.io'
-                    }
+                    source: 'reyohoho'
                 });
-            } catch (error) {
-                console.error('ReYohoho error:', error);
+            } catch (fallbackError) {
+                console.error('ReYohoho fallback ошибка:', fallbackError);
                 return false;
             }
         }
+    }
 
-        // Регистрация обработчика для Lampa 2.4.6
-        try {
-            if (Lampa.Player.handler && Lampa.Player.handler.add) {
-                Lampa.Player.handler.add({
-                    name: 'reyohoho',
-                    priority: 10,
-                    handler: handleReYohohoPlay
-                });
-                console.log('ReYohoho plugin успешно зарегистрирован');
-            } else {
-                console.error('Lampa.Player.handler.add не доступен');
-            }
-        } catch (e) {
-            console.error('Ошибка регистрации плагина:', e);
-        }
-    });
+    // Запускаем проверку API
+    checkLampaAPI();
 })();
