@@ -1,24 +1,20 @@
-(function() {
-    'use strict';
-
-    // Проверка на дублирование
-    if (window.ReYohohoPluginInstalled) return;
-    window.ReYohohoPluginInstalled = true;
-
-    console.log('[ReYohoho] Plugin initialization');
-
-    // Основная функция добавления кнопки
+$(document).ready(function() {
+    // Функция для добавления кнопки
     function addButton() {
         const checkInterval = setInterval(() => {
+            console.log('Пытаемся найти контейнер...');
             const buttonsContainer = $('.full-start__buttons');
             if (buttonsContainer.length) {
                 clearInterval(checkInterval);
-                // Проверяем, не добавлена ли уже кнопка
+                console.log('Контейнер найден:', buttonsContainer);
+
+                // Проверка, есть ли уже кнопка, чтобы не добавлять дубли
                 if (buttonsContainer.find('.view--reyohoho').length) {
-                    console.log('[ReYohoho] Button already exists');
+                    console.log('[ReYohoho] Кнопка уже существует');
                     return;
                 }
 
+                // Создаем кнопку HTML
                 const buttonHTML = `
                     <div class="full-start__button view--reyohoho" style="cursor:pointer;">
                         <div class="full-start__button-icon">
@@ -31,64 +27,31 @@
                 `;
 
                 const button = $(buttonHTML);
-                // Используйте 'click' вместо 'hover:enter', если нет кастомных событий
+
+                // Обработка клика по кнопке
                 button.on('click', function() {
                     const cardData = Lampa.Storage.get('card_data');
                     if (cardData) {
-                        console.log('[ReYohoho] Launching for:', cardData.title || cardData.name);
+                        console.log('[ReYohoho] Запуск для:', cardData.title || cardData.name);
                         Lampa.Noty.show(`ReYohoho: ${cardData.title || cardData.name}`);
-                        // Основной функционал тут
+                    } else {
+                        console.log('[ReYohoho] Нет данных card_data');
                     }
                 });
 
+                // Вставляем кнопку в контейнер
                 buttonsContainer.append(button);
-                console.log('[ReYohoho] Button successfully added');
+                console.log('[ReYohoho] Кнопка добавлена');
+            } else {
+                console.log('Контейнер не найден, повтор через 100мс...');
             }
         }, 100);
     }
 
-    // Регистрация обработчика
-    function registerHandler() {
-        if (Lampa.Player && Lampa.Player.addHandler) {
-            Lampa.Player.addHandler({
-                name: 'reyohoho',
-                title: 'ReYohoho',
-                priority: 15,
-                handler: function(data) {
-                    console.log('[ReYohoho] Player handler activated');
-                    Lampa.Noty.show('ReYohoho запущен');
-                }
-            });
-        }
-    }
+    // Запускаем функцию с проверкой спустя некоторое время
+    // если контейнер появляется позже
+    addButton();
 
-    // Инициализация плагина
-    function init() {
-        addButton();
-        registerHandler();
-
-        setTimeout(() => {
-            if ($('.view--reyohoho').length === 0) {
-                console.log('[ReYohoho] Retrying to add button');
-                addButton();
-            }
-        }, 2000);
-    }
-
-    // Запуск
-    if (window.appready) {
-        init();
-    } else {
-        Lampa.Listener.follow('app', function(e) {
-            if (e.type === 'ready') init();
-        });
-    }
-
-    // Следим за обновлениями интерфейса
-    Lampa.Listener.follow('full', function(e) {
-        if (e.type === 'complete' && $('.view--reyohoho').length === 0) {
-            console.log('[ReYohoho] Full view updated, re-adding button');
-            addButton();
-        }
-    });
-})();
+    // Также можно попробовать через задержку
+    // setTimeout(addButton, 3000); // например, через 3 секунды
+});
