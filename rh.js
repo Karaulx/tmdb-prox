@@ -1,21 +1,29 @@
 (function() {
     'use strict';
 
-    if (window.ReYohohoFinalPlugin) return;
-    window.ReYohohoFinalPlugin = true;
+    // Проверка на дублирование
+    if (window.ReYohohoPluginInstalled) return;
+    window.ReYohohoPluginInstalled = true;
 
-    console.log('ReYohoho Final Plugin loading...');
+    console.log('[ReYohoho] Plugin initialization');
 
-    // 1. Проверенный метод добавления кнопки
+    // Основная функция добавления кнопки
     function addButton() {
-        // Ждем готовности интерфейса
-        const interval = setInterval(() => {
+        // Ждем появления контейнера кнопок
+        const checkInterval = setInterval(() => {
             const buttonsContainer = $('.full-start__buttons');
+            
             if (buttonsContainer.length) {
-                clearInterval(interval);
+                clearInterval(checkInterval);
                 
-                // Создаем кнопку в ТОЧНОМ формате Lampa
-                const button = `
+                // Проверяем, не добавлена ли уже кнопка
+                if (buttonsContainer.find('.view--reyohoho').length) {
+                    console.log('[ReYohoho] Button already exists');
+                    return;
+                }
+
+                // Создаем кнопку по аналогии с рабочим плагином
+                const buttonHTML = `
                     <div class="full-start__button view--reyohoho">
                         <div class="full-start__button-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
@@ -25,51 +33,54 @@
                         <div class="full-start__button-title">ReYohoho</div>
                     </div>
                 `;
-                
-                // Добавляем с правильным обработчиком
-                buttonsContainer.append($(button).on('hover:enter', () => {
+
+                // Добавляем кнопку в контейнер
+                const button = $(buttonHTML).on('hover:enter', function() {
                     const cardData = Lampa.Storage.get('card_data');
                     if (cardData) {
-                        console.log('Запуск ReYohoho для:', cardData.title || cardData.name);
-                        Lampa.Noty.show('ReYohoho: ' + (cardData.title || cardData.name));
+                        console.log('[ReYohoho] Launching for:', cardData.title || cardData.name);
+                        Lampa.Noty.show(`ReYohoho: ${cardData.title || cardData.name}`);
+                        // Здесь будет основной функционал
                     }
-                }));
-                
-                console.log('Кнопка ReYohoho успешно добавлена');
+                });
+
+                // Вставляем кнопку в правильное место (как в рабочем плагине)
+                buttonsContainer.append(button);
+                console.log('[ReYohoho] Button successfully added');
             }
         }, 100);
     }
 
-    // 2. Альтернативная регистрация
+    // Дополнительная регистрация обработчика
     function registerHandler() {
-        if (Lampa.Player?.addHandler) {
+        if (Lampa.Player && Lampa.Player.addHandler) {
             Lampa.Player.addHandler({
                 name: 'reyohoho',
                 title: 'ReYohoho',
                 priority: 15,
                 handler: function(data) {
-                    console.log('ReYohoho handler activated');
+                    console.log('[ReYohoho] Player handler activated');
                     Lampa.Noty.show('ReYohoho запущен');
                 }
             });
         }
     }
 
-    // 3. Инициализация
+    // Инициализация плагина
     function init() {
         addButton();
         registerHandler();
         
-        // Фикс для некоторых версий Lampa
+        // Дополнительная проверка через 2 секунды
         setTimeout(() => {
             if ($('.view--reyohoho').length === 0) {
-                console.warn('Повторная попытка добавления кнопки');
+                console.log('[ReYohoho] Retrying to add button');
                 addButton();
             }
         }, 2000);
     }
 
-    // Запуск
+    // Запуск плагина
     if (window.appready) {
         init();
     } else {
@@ -77,4 +88,12 @@
             if (e.type === 'ready') init();
         });
     }
+
+    // Следим за обновлениями интерфейса (как в рабочем плагине)
+    Lampa.Listener.follow('full', function(e) {
+        if (e.type === 'complite' && $('.view--reyohoho').length === 0) {
+            console.log('[ReYohoho] Full view updated, re-adding button');
+            addButton();
+        }
+    });
 })();
