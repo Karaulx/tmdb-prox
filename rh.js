@@ -5,8 +5,8 @@
         if (event.type === 'ready') {
             console.log('[RH] Lampa готова — подключаем источник');
 
-            if (Lampa.Platform && Lampa.Platform.addSource) {
-                Lampa.Platform.addSource({
+            function registerSource() {
+                let sourceData = {
                     title: 'Reyohoho',
                     id: 'reyohoho',
                     type: 'online',
@@ -30,12 +30,33 @@
                                 call([]);
                             });
                     }
-                });
+                };
 
-                console.log('[RH] Источник Reyohoho подключён');
-            } else {
-                console.error('[RH] Lampa.Platform.addSource не найден');
+                if (Lampa.Platform && Lampa.Platform.addSource) {
+                    Lampa.Platform.addSource(sourceData);
+                    console.log('[RH] Источник добавлен через Platform');
+                } 
+                else if (Lampa.Source && Lampa.Source.add) {
+                    Lampa.Source.add(sourceData);
+                    console.log('[RH] Источник добавлен через Source');
+                } 
+                else {
+                    console.warn('[RH] API для источников не найден — добавляем через Component');
+
+                    let origComponentAdd = Lampa.Component.add;
+                    Lampa.Component.add = function (name, comp) {
+                        if (name === 'sources') {
+                            if (comp && comp.sources) {
+                                comp.sources.push(sourceData);
+                                console.log('[RH] Источник добавлен через Component');
+                            }
+                        }
+                        return origComponentAdd.apply(this, arguments);
+                    };
+                }
             }
+
+            registerSource();
         }
     });
 })();
