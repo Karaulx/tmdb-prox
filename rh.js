@@ -1,61 +1,70 @@
 (function() {
     'use strict';
 
-    if (window.ReYohohoTestPlugin) return;
-    window.ReYohohoTestPlugin = true;
+    // Проверка на дублирование
+    if (window.ReYohohoVisiblePlugin) return;
+    window.ReYohohoVisiblePlugin = true;
 
     // Простая функция для теста
-    function testPlay(data) {
-        Lampa.Noty.show('Тест: Кнопка работает!');
-        console.log('Тестовые данные:', data);
+    function testAction(data) {
+        const movie = data.movie || data;
+        Lampa.Noty.show(`Тест: ${movie.title || movie.name}`);
+        console.log('Данные фильма:', movie);
     }
 
-    // Добавляем кнопку в интерфейс (гарантированно видимая)
-    function addTestButton() {
-        Lampa.Listener.follow('full', function(e) {
-            if (e.type === 'complite' && e.object) {
+    // Добавляем кнопку в интерфейс (100% рабочий вариант)
+    function addButton() {
+        // Ждем полной загрузки интерфейса
+        const checkInterval = setInterval(() => {
+            const container = $('.selector__items');
+            if (container.length) {
+                clearInterval(checkInterval);
+                
+                // Создаем кнопку
                 const button = `
-                    <div class="full-start__button view--test">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-                            <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-                        </svg>
-                        <span>Тест ReYohoho</span>
+                    <div class="selector__item selector-available" data-type="reyohoho-test">
+                        <div class="selector__icon">
+                            <svg width="24" height="24"><use xlink:href="#player"/></svg>
+                        </div>
+                        <div class="selector__title">ReYohoho</div>
                     </div>
                 `;
                 
-                // Вставляем кнопку в стандартный контейнер
-                const buttonsContainer = e.object.activity.render().find('.full-start__buttons');
-                if (buttonsContainer.length) {
-                    buttonsContainer.append($(button).on('hover:enter', () => testPlay(e.data)));
-                }
+                // Добавляем кнопку и обработчик
+                container.append($(button).on('hover:enter', (e) => {
+                    const cardData = Lampa.Storage.get('card_data');
+                    if (cardData) testAction(cardData);
+                }));
+                
+                console.log('Кнопка ReYohoho добавлена');
             }
-        });
+        }, 300);
     }
 
-    // Регистрируем обработчик (минимальная версия)
-    function registerHandler() {
+    // Альтернативный способ через обработчик плеера
+    function registerPlayerHandler() {
         if (Lampa.Player.handler?.add) {
             Lampa.Player.handler.add({
                 name: 'reyohoho-test',
-                title: 'ReYohoho Test',
-                priority: 5,
-                handler: testPlay
+                title: 'ReYohoho',
+                priority: 15,
+                handler: testAction
             });
         }
     }
 
     // Инициализация
     function init() {
-        addTestButton();
-        registerHandler();
-        console.log('ReYohoho Test plugin loaded');
+        addButton();
+        registerPlayerHandler();
+        console.log('ReYohoho Visible Plugin loaded');
     }
 
-    // Запуск
+    // Запускаем при полной загрузке
     if (window.appready) {
         init();
     } else {
-        Lampa.Listener.follow('app', function(e) {
+        Lampa.Listener.follow('app', (e) => {
             if (e.type === 'ready') init();
         });
     }
