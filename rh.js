@@ -2,25 +2,29 @@
     'use strict';
 
     // Проверка на дублирование
-    if (window.ReYohohoVisiblePlugin) return;
-    window.ReYohohoVisiblePlugin = true;
+    if (window.ReYohohoButtonPlugin) return;
+    window.ReYohohoButtonPlugin = true;
 
-    // Простая функция для теста
-    function testAction(data) {
-        const movie = data.movie || data;
-        Lampa.Noty.show(`Тест: ${movie.title || movie.name}`);
-        console.log('Данные фильма:', movie);
+    console.log('ReYohoho plugin started');
+
+    // 1. Функция для теста
+    function testPlay(data) {
+        try {
+            const movie = data.movie || data;
+            const title = movie?.title || movie?.name || 'Unknown';
+            Lampa.Noty.show(`Тест: ${title}`);
+            console.log('Тестовые данные:', movie);
+        } catch (e) {
+            console.error('Test error:', e);
+        }
     }
 
-    // Добавляем кнопку в интерфейс (100% рабочий вариант)
+    // 2. Гарантированное добавление кнопки
     function addButton() {
-        // Ждем полной загрузки интерфейса
-        const checkInterval = setInterval(() => {
-            const container = $('.selector__items');
-            if (container.length) {
-                clearInterval(checkInterval);
-                
-                // Создаем кнопку
+        // Способ 1: Через стандартный контейнер
+        const addToUI = () => {
+            const container = $('.selector__items, .full-start__buttons').first();
+            if (container.length && !container.find('[data-type="reyohoho-test"]').length) {
                 const button = `
                     <div class="selector__item selector-available" data-type="reyohoho-test">
                         <div class="selector__icon">
@@ -29,38 +33,62 @@
                         <div class="selector__title">ReYohoho</div>
                     </div>
                 `;
-                
-                // Добавляем кнопку и обработчик
-                container.append($(button).on('hover:enter', (e) => {
-                    const cardData = Lampa.Storage.get('card_data');
-                    if (cardData) testAction(cardData);
+                container.append($(button).on('hover:enter', () => {
+                    const cardData = Lampa.Storage.get('card_data') || {};
+                    testPlay(cardData);
                 }));
-                
-                console.log('Кнопка ReYohoho добавлена');
+                console.log('Кнопка добавлена в', container[0]);
+                return true;
             }
-        }, 300);
+            return false;
+        };
+
+        // Способ 2: Если стандартный не сработал
+        const fallbackAdd = () => {
+            const newContainer = $('<div class="selector__items"></div>');
+            $('body').append(newContainer);
+            const button = $(`<div class="selector__item">ReYohoho</div>`)
+                .on('click', () => testPlay({}));
+            newContainer.append(button);
+            console.warn('Использован fallback-контейнер');
+        };
+
+        // Пытаемся добавить каждые 500мс, пока не получится
+        const tryAdd = setInterval(() => {
+            if (addToUI() || fallbackAdd()) {
+                clearInterval(tryAdd);
+            }
+        }, 500);
     }
 
-    // Альтернативный способ через обработчик плеера
-    function registerPlayerHandler() {
-        if (Lampa.Player.handler?.add) {
+    // 3. Регистрация обработчика
+    function registerHandler() {
+        if (typeof Lampa?.Player?.handler?.add === 'function') {
             Lampa.Player.handler.add({
                 name: 'reyohoho-test',
                 title: 'ReYohoho',
-                priority: 15,
-                handler: testAction
+                priority: 10,
+                handler: testPlay
             });
+            console.log('Обработчик зарегистрирован');
         }
     }
 
-    // Инициализация
+    // 4. Запуск плагина
     function init() {
         addButton();
-        registerPlayerHandler();
-        console.log('ReYohoho Visible Plugin loaded');
+        registerHandler();
+        
+        // Дублирующая проверка через 3 секунды
+        setTimeout(() => {
+            if (!$('[data-type="reyohoho-test"]').length) {
+                console.warn('Кнопка не найдена, повторная попытка');
+                addButton();
+            }
+        }, 3000);
     }
 
-    // Запускаем при полной загрузке
+    // Загрузка
     if (window.appready) {
         init();
     } else {
