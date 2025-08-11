@@ -1,98 +1,79 @@
 (function() {
     'use strict';
 
-    // Проверка на дублирование
-    if (window.ReYohohoButtonPlugin) return;
-    window.ReYohohoButtonPlugin = true;
+    if (window.ReYohohoFinalPlugin) return;
+    window.ReYohohoFinalPlugin = true;
 
-    console.log('ReYohoho plugin started');
+    console.log('ReYohoho Final Plugin loading...');
 
-    // 1. Функция для теста
-    function testPlay(data) {
-        try {
-            const movie = data.movie || data;
-            const title = movie?.title || movie?.name || 'Unknown';
-            Lampa.Noty.show(`Тест: ${title}`);
-            console.log('Тестовые данные:', movie);
-        } catch (e) {
-            console.error('Test error:', e);
-        }
-    }
-
-    // 2. Гарантированное добавление кнопки
+    // 1. Проверенный метод добавления кнопки
     function addButton() {
-        // Способ 1: Через стандартный контейнер
-        const addToUI = () => {
-            const container = $('.selector__items, .full-start__buttons').first();
-            if (container.length && !container.find('[data-type="reyohoho-test"]').length) {
+        // Ждем готовности интерфейса
+        const interval = setInterval(() => {
+            const buttonsContainer = $('.full-start__buttons');
+            if (buttonsContainer.length) {
+                clearInterval(interval);
+                
+                // Создаем кнопку в ТОЧНОМ формате Lampa
                 const button = `
-                    <div class="selector__item selector-available" data-type="reyohoho-test">
-                        <div class="selector__icon">
-                            <svg width="24" height="24"><use xlink:href="#player"/></svg>
+                    <div class="full-start__button view--reyohoho">
+                        <div class="full-start__button-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                            </svg>
                         </div>
-                        <div class="selector__title">ReYohoho</div>
+                        <div class="full-start__button-title">ReYohoho</div>
                     </div>
                 `;
-                container.append($(button).on('hover:enter', () => {
-                    const cardData = Lampa.Storage.get('card_data') || {};
-                    testPlay(cardData);
+                
+                // Добавляем с правильным обработчиком
+                buttonsContainer.append($(button).on('hover:enter', () => {
+                    const cardData = Lampa.Storage.get('card_data');
+                    if (cardData) {
+                        console.log('Запуск ReYohoho для:', cardData.title || cardData.name);
+                        Lampa.Noty.show('ReYohoho: ' + (cardData.title || cardData.name));
+                    }
                 }));
-                console.log('Кнопка добавлена в', container[0]);
-                return true;
+                
+                console.log('Кнопка ReYohoho успешно добавлена');
             }
-            return false;
-        };
-
-        // Способ 2: Если стандартный не сработал
-        const fallbackAdd = () => {
-            const newContainer = $('<div class="selector__items"></div>');
-            $('body').append(newContainer);
-            const button = $(`<div class="selector__item">ReYohoho</div>`)
-                .on('click', () => testPlay({}));
-            newContainer.append(button);
-            console.warn('Использован fallback-контейнер');
-        };
-
-        // Пытаемся добавить каждые 500мс, пока не получится
-        const tryAdd = setInterval(() => {
-            if (addToUI() || fallbackAdd()) {
-                clearInterval(tryAdd);
-            }
-        }, 500);
+        }, 100);
     }
 
-    // 3. Регистрация обработчика
+    // 2. Альтернативная регистрация
     function registerHandler() {
-        if (typeof Lampa?.Player?.handler?.add === 'function') {
-            Lampa.Player.handler.add({
-                name: 'reyohoho-test',
+        if (Lampa.Player?.addHandler) {
+            Lampa.Player.addHandler({
+                name: 'reyohoho',
                 title: 'ReYohoho',
-                priority: 10,
-                handler: testPlay
+                priority: 15,
+                handler: function(data) {
+                    console.log('ReYohoho handler activated');
+                    Lampa.Noty.show('ReYohoho запущен');
+                }
             });
-            console.log('Обработчик зарегистрирован');
         }
     }
 
-    // 4. Запуск плагина
+    // 3. Инициализация
     function init() {
         addButton();
         registerHandler();
         
-        // Дублирующая проверка через 3 секунды
+        // Фикс для некоторых версий Lampa
         setTimeout(() => {
-            if (!$('[data-type="reyohoho-test"]').length) {
-                console.warn('Кнопка не найдена, повторная попытка');
+            if ($('.view--reyohoho').length === 0) {
+                console.warn('Повторная попытка добавления кнопки');
                 addButton();
             }
-        }, 3000);
+        }, 2000);
     }
 
-    // Загрузка
+    // Запуск
     if (window.appready) {
         init();
     } else {
-        Lampa.Listener.follow('app', (e) => {
+        Lampa.Listener.follow('app', function(e) {
             if (e.type === 'ready') init();
         });
     }
