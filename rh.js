@@ -1,45 +1,68 @@
-(function () {
+(function() {
     'use strict';
 
-    function startPlugin() {
-        if (!Lampa.Source) {
-            console.log('Source API не готово, повторная попытка...');
-            setTimeout(startPlugin, 500);
-            return;
-        }
+    // Ждём, пока Лампа прогрузится
+    function start() {
+        console.log('[Reyohoho] Плагин инициализирован');
 
+        // Регистрируем источник
         Lampa.Source.add('reyohoho', {
-            title: 'Reyohoho',
-            search: function (query, call) {
-                Lampa.Utils.request(`https://reyohoho.github.io/api/search?title=${encodeURIComponent(query)}`, (response) => {
-                    if (!response || !response.results || !response.results.length) {
-                        call([]);
-                        return;
-                    }
+            title: 'Reyohoho',     // Название в списке источников
+            type: 'online',        // Обязательно, чтобы попасть в онлайн-источники
 
-                    let results = response.results.map(item => ({
-                        title: item.title,
-                        url: item.stream_url,
-                        quality: item.quality || 'HD',
-                        subtitles: item.subtitles || []
-                    }));
+            // Поиск
+            search: function(query, call) {
+                console.log('[Reyohoho] Поиск:', query);
 
-                    call(results);
-                }, () => {
-                    call([]);
-                });
+                // Для теста — возвращаем один фейковый результат
+                call([{
+                    title: 'Тестовый фильм',
+                    year: 2024,
+                    quality: 'HD',
+                    url: 'https://test-stream.example/video.mp4'
+                }]);
             },
-            play: function (element) {
-                Lampa.Player.play(element.url);
+
+            // Проигрывание
+            play: function(item) {
+                console.log('[Reyohoho] Воспроизведение:', item);
+
+                Lampa.Player.play({
+                    title: item.title,
+                    url: item.url,
+                    quality: item.quality || 'HD',
+                    subtitles: []
+                });
             }
         });
 
-        console.log('Плагин Reyohoho подключён');
+        // Добавляем кнопку в меню
+        Lampa.Controller.add('reyohoho_btn', {
+            toggle: function() {
+                Lampa.Controller.collectionSet(this.render(), this.render());
+                Lampa.Controller.collectionFocus(this.render());
+            },
+            render: function() {
+                let button = $('<div class="selector">Reyohoho</div>');
+                button.on('hover:enter', function() {
+                    Lampa.Noty.show('Кнопка Reyohoho нажата!');
+                });
+                return button;
+            },
+            destroy: function() {}
+        });
+
+        Lampa.Controller.add('menu', {
+            render: function() {
+                return $('<div class="menu"></div>').append(Lampa.Controller.get('reyohoho_btn').render());
+            }
+        });
     }
 
-    if (window.appready) startPlugin();
-    else Lampa.Listener.follow('app', function (e) {
-        if (e.type === 'ready') startPlugin();
+    // Ждём готовности приложения
+    if (window.appready) start();
+    else Lampa.Listener.follow('app', function(e) {
+        if (e.type === 'ready') start();
     });
 
 })();
