@@ -1,17 +1,17 @@
 (() => {
   const source = {
     name: 'Reyohoho proxy',
-    weight: 300, // приоритет источника
+    weight: 300,
 
-    search: (query) => {
-      if (!query.title) return Promise.resolve({list: []});
+    search(query) {
+      if (!query.title) return Promise.resolve({ list: [] });
 
       const url = `http://your-server/reyohoho-proxy.php?title=${encodeURIComponent(query.title)}`;
 
       return fetch(url)
         .then(res => res.json())
         .then(data => {
-          if (!data.url) return {list: []};
+          if (!data.url) return { list: [] };
 
           return {
             list: [{
@@ -23,23 +23,25 @@
             }]
           };
         })
-        .catch(() => ({list: []}));
+        .catch(() => ({ list: [] }));
     },
 
-    play: (item) => {
+    play(item) {
       return {
         url: item.url,
-        type: 'hls' // или 'mp4' в зависимости от ссылки
+        type: item.url?.includes('.m3u8') ? 'hls' : 'mp4'
       };
     }
   };
 
-  if (window.Lampa && Lampa.Source) {
-    Lampa.Source.add(source);
-  } else {
-    console.warn('Lampa.Source не найден, добавляем позже');
-    document.addEventListener('lampa-ready', () => {
-      Lampa.Source.add(source);
-    });
+  // Ждём когда компонент Sources загрузится, потом регистрируем наш источник
+  function register() {
+    if (window.Lampa && Lampa.Component && Lampa.Component.get('Sources')) {
+      Lampa.Component.get('Sources').add(source);
+    } else {
+      setTimeout(register, 100);
+    }
   }
+
+  register();
 })();
