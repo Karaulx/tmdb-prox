@@ -8,76 +8,41 @@ function initReYohohoPlugin() {
 
     function addReYohohoButton() {
         console.log('[ReYohoho] Trying to add button...');
-
+        
         // 1. Проверка существования кнопки
         if ($('.re-yohoho-button').length > 0) return;
         
-        // 2. Попробуем найти любой контейнер в карточке контента
-        const possibleParents = [
-            '.full-start__header',
-            '.full-start__body',
-            '.full-start__info',
-            '.card__head',
-            '.card__body'
-        ];
+        // 2. Находим контейнер кнопок
+        const buttonsContainer = $('.full-start__buttons');
         
-        let parentContainer = null;
-        
-        for (const selector of possibleParents) {
-            parentContainer = $(selector);
-            if (parentContainer.length) {
-                console.log(`[ReYohoho] Found parent: ${selector}`);
-                break;
-            }
+        if (!buttonsContainer.length) {
+            console.error('[ReYohoho] Buttons container (.full-start__buttons) not found!');
+            return;
         }
         
-        // 3. Если не нашли стандартный контейнер - создаем в новом месте
-        if (!parentContainer || !parentContainer.length) {
-            console.warn('[ReYohoho] No standard parent found - using alternative location');
-            
-            // Попробуем найти заголовок
-            const titleContainer = $('.full-start__title, .card__title').first();
-            if (titleContainer.length) {
-                parentContainer = titleContainer.parent();
-            } else {
-                console.error('[ReYohoho] ERROR: Cannot find any container for button');
-                return;
-            }
-        }
-        
-        // 4. Создание кнопки с абсолютным позиционированием
+        // 3. Создание кнопки ReYohoho
         const button = $(`
-            <div class="selector re-yohoho-button" 
-                 style="position: absolute; top: 15px; right: 15px; z-index: 100;
-                        background: rgba(0,0,0,0.7); border-radius: 4px; padding: 8px 12px;
-                        display: flex; align-items: center; gap: 8px;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <div class="full-start__button selector re-yohoho-button" 
+                 data-action="open-reyohoho"
+                 style="border: 2px solid #00ff00; background: rgba(0,255,0,0.1);">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM10 16.5L5.5 12L7 10.5L10 13.5L17 6.5L18.5 8L10 16.5Z" fill="#00ff00"/>
                 </svg>
-                <span style="color: #00ff00; font-size: 14px;">ReYohoho</span>
+                <span style="color: #00ff00;">ReYohoho</span>
             </div>
         `);
         
         button.on('hover:enter', openReYohoho);
         
-        // 5. Добавляем кнопку прямо в найденный контейнер
-        parentContainer.css('position', 'relative').append(button);
-        console.log('[ReYohoho] Button added with absolute positioning');
-    }
-
-    // 6. Улучшенная система повторных попыток
-    function tryAddButton() {
-        setTimeout(() => {
-            if (!$('.re-yohoho-button').length) {
-                console.log('[ReYohoho] Retrying button addition...');
-                addReYohohoButton();
-                
-                // Если все еще не добавлено - еще одна попытка
-                if (!$('.re-yohoho-button').length) {
-                    setTimeout(addReYohohoButton, 1000);
-                }
-            }
-        }, 500);
+        // 4. Добавляем кнопку перед кнопкой "Трейлер"
+        const trailerButton = buttonsContainer.find('.view--trailer');
+        if (trailerButton.length) {
+            trailerButton.before(button);
+            console.log('[ReYohoho] Button added before Trailer button');
+        } else {
+            buttonsContainer.prepend(button);
+            console.log('[ReYohoho] Button added to start of container');
+        }
     }
 
     function setupCardEvents() {
@@ -87,27 +52,23 @@ function initReYohohoPlugin() {
         Lampa.Listener.follow('full', function(e) {
             if (e.type === 'start') {
                 console.log('[ReYohoho] Full start event received');
-                tryAddButton();
-            }
-        });
-        
-        // Дополнительный триггер
-        Lampa.Listener.follow('content', function(e) {
-            if (e.type === 'data') {
-                console.log('[ReYohoho] Content data event received');
-                tryAddButton();
+                // Несколько попыток с разными задержками
+                setTimeout(addReYohohoButton, 100);
+                setTimeout(addReYohohoButton, 500);
+                setTimeout(addReYohohoButton, 1000);
             }
         });
     }
 
-    // 7. Инициализация плагина
+    // Инициализация плагина
     if (window.appready) {
         console.log('[ReYohoho] App is ready');
         setupCardEvents();
         
-        if ($('.full-start, .card--full').length) {
+        // Если карточка уже открыта при загрузке плагина
+        if ($('.full-start').length) {
             console.log('[ReYohoho] Content card already open');
-            tryAddButton();
+            setTimeout(addReYohohoButton, 300);
         }
     } else {
         console.log('[ReYohoho] Waiting for app ready');
@@ -120,27 +81,19 @@ function initReYohohoPlugin() {
     }
 }
 
-// Запуск плагина
+// Защита от повторной загрузки
 if (!window.reYohohoPluginLoaded) {
     window.reYohohoPluginLoaded = true;
-    console.log('[ReYohoho] Loading plugin...');
     
-    // Ожидание Lampa с таймаутом
+    // Ожидание загрузки Lampa
     if (typeof Lampa !== 'undefined') {
         initReYohohoPlugin();
     } else {
-        console.log('[ReYohoho] Waiting for Lampa...');
-        let waitCount = 0;
-        const waitInterval = setInterval(() => {
-            waitCount++;
+        const checkLampa = setInterval(() => {
             if (typeof Lampa !== 'undefined') {
-                clearInterval(waitInterval);
-                console.log('[ReYohoho] Lampa detected');
+                clearInterval(checkLampa);
                 initReYohohoPlugin();
-            } else if (waitCount > 10) { // 5 секунд таймаут
-                clearInterval(waitInterval);
-                console.error('[ReYohoho] Lampa not found after 5 seconds');
             }
-        }, 500);
+        }, 100);
     }
-        }
+}
