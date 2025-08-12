@@ -1,7 +1,6 @@
 (function() {
     'use strict';
 
-    // Защита от повторной загрузки
     if (window.ReYohohoButtonAdded) return;
     window.ReYohohoButtonAdded = true;
 
@@ -19,12 +18,36 @@
 
     // Функция добавления кнопки
     function addReYohohoButton() {
-        // 1. Находим контейнер кнопок
-        const buttonsContainer = document.querySelector('.full-start__buttons');
+        // 1. Альтернативные селекторы для поиска контейнера
+        const containerSelectors = [
+            '.full-start__buttons', // Основной селектор
+            '.full-start__controls', // Возможный родительский контейнер
+            '.full-start' // Самый внешний контейнер
+        ];
+
+        let buttonsContainer;
+        for (const selector of containerSelectors) {
+            buttonsContainer = document.querySelector(selector);
+            if (buttonsContainer) break;
+        }
+
+        // Если контейнер не найден, используем более глубокий поиск
         if (!buttonsContainer) {
-            console.log('Контейнер кнопок не найден, повторная попытка через 500мс');
-            setTimeout(addReYohohoButton, 500);
-            return;
+            buttonsContainer = document.querySelector('.full-start .full-start__buttons');
+        }
+
+        // Если контейнер все еще не найден, создаем его
+        if (!buttonsContainer) {
+            console.warn('Контейнер не найден, создаем новый');
+            buttonsContainer = document.createElement('div');
+            buttonsContainer.className = 'full-start__buttons';
+            const fullStart = document.querySelector('.full-start');
+            if (fullStart) {
+                fullStart.appendChild(buttonsContainer);
+            } else {
+                console.error('Не удалось найти .full-start');
+                return;
+            }
         }
 
         // 2. Проверяем, не добавлена ли кнопка уже
@@ -45,16 +68,12 @@
             </div>
         `;
 
-        // 4. Вставляем кнопку перед кнопкой настроек
-        const optionsButton = buttonsContainer.querySelector('.button--options');
-        if (optionsButton) {
-            optionsButton.insertAdjacentHTML('beforebegin', buttonHTML);
-        } else {
-            buttonsContainer.insertAdjacentHTML('beforeend', buttonHTML);
-        }
+        // 4. Вставляем кнопку в контейнер
+        buttonsContainer.insertAdjacentHTML('beforeend', buttonHTML);
 
         // 5. Добавляем обработчик события
         const reyohohoButton = buttonsContainer.querySelector('.view--reyohoho');
+        reyohohoButton.addEventListener('click', handleReYohohoClick);
         reyohohoButton.addEventListener('hover:enter', handleReYohohoClick);
         
         console.log('Кнопка ReYohoho успешно добавлена');
@@ -62,16 +81,40 @@
 
     // Инициализация плагина
     function initPlugin() {
-        // Запускаем добавление кнопки
+        // Пытаемся добавить кнопку сразу
         addReYohohoButton();
         
-        // Дополнительная проверка через 2 секунды
+        // Отслеживаем изменения DOM на случай динамической загрузки
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.addedNodes) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.classList && (
+                            node.classList.contains('full-start') || 
+                            node.classList.contains('full-start__buttons') ||
+                            node.querySelector('.full-start__buttons')
+                        )) {
+                            addReYohohoButton();
+                            return;
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Начинаем наблюдение
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Дополнительная проверка через 3 секунды
         setTimeout(() => {
             if (!document.querySelector('.view--reyohoho')) {
                 console.log('Повторная попытка добавления кнопки');
                 addReYohohoButton();
             }
-        }, 2000);
+        }, 3000);
     }
 
     // Запуск после загрузки Lampa
