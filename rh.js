@@ -1,6 +1,13 @@
-// ReYohoho Plugin для Lampa
+// ReYohoho Plugin v2 с точным определением ID
 (function() {
-    // 1. Ждем загрузки Lampa
+    // 1. Конфигурация
+    const config = {
+        buttonPosition: 'bottom: 20px; right: 20px;', // Позиция кнопки
+        buttonColor: '#00ff00', // Цвет кнопки
+        debugMode: true // Режим отладки
+    };
+
+    // 2. Ждем готовности Lampa
     function waitForLampa(callback) {
         if (window.Lampa && window.Lampa.Storage) {
             callback();
@@ -10,79 +17,50 @@
     }
 
     waitForLampa(function() {
-        console.log('[ReYohoho] Lampa detected, starting plugin');
+        console.log('[ReYohoho] Инициализация плагина');
         
-        // 2. Функция диагностики - собираем все возможные данные
-        function debugInfo() {
-            const info = {
-                // Основные хранилища
-                storage: {
-                    current_item: Lampa.Storage.get('current_item'),
-                    card_data: Lampa.Storage.get('card_data'),
-                    last_card: Lampa.Storage.get('last_card')
-                },
-                
-                // URL страницы
-                url: {
-                    full: window.location.href,
-                    path: window.location.pathname,
-                    id: null,
-                    type: null
-                },
-                
-                // DOM элементы
-                elements: {
-                    buttons_container: $('.full-start__buttons').length,
-                    card_title: $('.card__title, .full-start__title').text().trim(),
-                    body_class: document.body.className
-                }
-            };
-
-            // Парсим ID и тип из URL
-            const urlMatch = window.location.pathname.match(/\/(movie|tv)\/(\d+)/);
-            if (urlMatch) {
-                info.url.type = urlMatch[1];
-                info.url.id = urlMatch[2];
-            }
-
-            return info;
-        }
-
-        // 3. Получаем ID контента всеми возможными способами
-        function getContentId() {
-            const debug = debugInfo();
-            console.log('[ReYohoho] Debug info:', debug);
+        // 3. Точное определение ID контента
+        function getExactContentId() {
+            // Метод 1: Из URL (новый надежный способ)
+            const path = window.location.pathname;
+            let id, type;
             
-            // Пробуем получить ID из разных источников
-            const idSources = [
-                debug.storage.current_item?.id,
-                debug.storage.card_data?.id,
-                debug.storage.last_card?.id,
-                debug.url.id
+            // Проверяем все возможные варианты URL
+            const patterns = [
+                {regex: /\/movie\/(\d+)/, type: 'movie'},
+                {regex: /\/tv\/(\d+)/, type: 'tv'},
+                {regex: /\/item\/(\d+)/, type: 'movie'},
+                {regex: /\/film\/(\d+)/, type: 'movie'}
             ];
             
-            for (const id of idSources) {
-                if (id && !isNaN(id)) return id;
+            for (const pattern of patterns) {
+                const match = path.match(pattern.regex);
+                if (match && match[1]) {
+                    id = match[1];
+                    type = pattern.type;
+                    break;
+                }
             }
             
-            return null;
+            // Метод 2: Из данных Lampa (если есть)
+            const storageData = Lampa.Storage.get('current_item') || {};
+            
+            // Приоритет: URL > Хранилище
+            return {
+                id: id || storageData.id,
+                type: type || storageData.type,
+                title: storageData.title || storageData.name || document.title.replace(' - Lampa', '')
+            };
         }
 
-        // 4. Создаем кнопку с гарантированным отображением
-        function createButton() {
-            const buttonId = 'reyohoho-fixed-button';
-            
-            // Удаляем старую кнопку если есть
-            $(`#${buttonId}`).remove();
-
-            // Создаем кнопку
-            const button = $(`
-                <div id="${buttonId}" 
+        // 4. Создаем кнопку с улучшенной обработкой
+        function createSmartButton() {
+            const buttonHtml = `
+                <div id="reyohoho-smart-button" 
                      style="position: fixed;
-                            bottom: 20px;
-                            right: 20px;
+                            ${config.buttonPosition}
                             padding: 12px 16px;
-                            background: #00ff00;
+                            background: ${config.buttonColor};
                             color: #000;
                             font-weight: bold;
                             border-radius: 8px;
@@ -97,48 +75,55 @@
                     </svg>
                     ReYohoho
                 </div>
-            `);
-
+            `;
+            
+            // Удаляем старую кнопку если есть
+            $('#reyohoho-smart-button').remove();
+            $('body').append(buttonHtml);
+            
             // Обработчик клика
-            button.on('click', function() {
-                const contentId = getContentId();
-                const debug = debugInfo();
+            $('#reyohoho-smart-button').on('click', function() {
+                const content = getExactContentId();
                 
-                if (!contentId) {
-                    Lampa.Noty.show(`Не удалось получить ID. Проверьте консоль (F12)`, 'error');
-                    console.error('[ReYohoho] Не могу определить ID контента. Полные данные:', debug);
+                if (config.debugMode) {
+                    console.group('[ReYohoho] Debug Information');
+                    console.log('Content Data:', content);
+                    console.log('URL:', window.location.href);
+                    console.log('Lampa Storage:', Lampa.Storage.get('current_item'));
+                    console.groupEnd();
+                }
+                
+                if (!content.id) {
+                    Lampa.Noty.show('Ошибка: ID контента не определен', 'error');
                     return;
                 }
                 
-                // Определяем тип контента
-                const type = debug.storage.current_item?.type || 
-                              debug.storage.card_data?.type || 
-                              (window.location.pathname.includes('/tv/') ? 'tv' : 'movie');
+                const type = content.type || 'movie'; // По умолчанию movie
+                const reyohohoUrl = `https://reyohoho.github.io/reyohoho/${type}/${content.id}`;
                 
-                const url = `https://reyohoho.github.io/reyohoho/${type}/${contentId}`;
-                console.log('[ReYohoho] Opening URL:', url);
-                
-                window.open(url, '_blank');
+                // Открываем в новом окне
+                window.open(reyohohoUrl, '_blank');
             });
-
-            // Добавляем кнопку на страницу
-            $('body').append(button);
-            console.log('[ReYohoho] Button created with fixed positioning');
+            
+            console.log('[ReYohoho] Smart button created');
         }
 
-        // 5. Инициализация плагина
-        function initPlugin() {
-            // Создаем кнопку сразу
-            createButton();
+        // 5. Инициализация с несколькими попытками
+        function init() {
+            createSmartButton();
             
-            // Дополнительные попытки (на случай динамической загрузки контента)
-            setTimeout(createButton, 1000);
-            setTimeout(createButton, 3000);
+            // Дополнительные попытки для динамического контента
+            const retryInterval = setInterval(() => {
+                if ($('#reyohoho-smart-button').length === 0) {
+                    createSmartButton();
+                }
+            }, 1000);
             
-            // Можно добавить слежение за изменениями, но для простоты ограничимся таймаутами
+            // Остановка через 10 секунд
+            setTimeout(() => clearInterval(retryInterval), 10000);
         }
 
-        // Запускаем плагин
-        initPlugin();
+        // Запуск
+        init();
     });
 })();
