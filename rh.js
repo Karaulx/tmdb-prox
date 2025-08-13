@@ -1,50 +1,84 @@
-// Lampa-ReYohoho Bridge
+// Lampa-ReYohoho Bridge (исправленная версия)
 (function() {
     // Конфигурация
     const config = {
-        reyohohoUrl: "https://reyohoho.github.io/reyohoho/",
+        reyohohoUrl: "https://reyohoho.github.io/reyohoho/?search=",
         buttonPosition: "bottom: 20px; right: 20px;",
         buttonColor: "#4CAF50",
-        debugMode: true
+        debugMode: true,
+        maxRetries: 3 // Максимальное количество попыток получения данных
     };
 
     // Ожидаем загрузки Lampa
-    function waitForLampa(callback) {
+    function waitForLampa(callback, attempts = 0) {
         if (window.Lampa && window.Lampa.Storage && window.Lampa.Player) {
             callback();
+        } else if (attempts < 30) { // 30 попыток (3 секунды)
+            setTimeout(() => waitForLampa(callback, attempts + 1), 100);
         } else {
-            setTimeout(() => waitForLampa(callback), 100);
+            console.error("[Lampa-ReYohoho] Lampa API не загрузилось");
         }
     }
 
     waitForLampa(function() {
         console.log("[Lampa-ReYohoho] Инициализация");
 
-        // Получаем данные из TMDB карточки
-        function getTmdbData() {
+        // 🔄 Улучшенное получение данных из TMDB
+        function getTmdbData(retry = 0) {
             try {
+                // 1. Пробуем получить данные через Lampa.Storage
                 const item = Lampa.Storage.get('current_item') || {};
-                const backupTitle = document.querySelector('.card__title, .full-start__title')?.textContent.trim();
                 
-                return {
-                    id: item.id,
-                    type: item.type || (window.location.pathname.includes('/tv/') ? 'tv' : 'movie'),
-                    title: item.title || item.name || backupTitle || '',
-                    year: item.year || new Date().getFullYear(),
-                    poster: item.poster || item.cover || ''
-                };
+                // 2. Если данных нет, парсим DOM
+                if (!item.title && !item.name) {
+                    const titleElement = document.querySelector('.card__title, .full-start__title, .player__title');
+                    const yearElement = document.querySelector('.card__year, .full-start__year, .player__year');
+                    const posterElement = document.querySelector('.card__poster, .full-start__poster, .player__poster img');
+                    
+                    item.title = titleElement?.textContent?.trim() || '';
+                    item.name = item.title; // Для совместимости
+                    item.year = parseInt(yearElement?.textContent) || new Date().getFullYear();
+                    item.poster = posterElement?.src || posterElement?.getAttribute('data-src') || '';
+                    
+                    // Определяем тип контента (фильм/сериал)
+                    const path = window.location.pathname;
+                    item.type = path.includes('/tv/') ? 'tv' : 'movie';
+                }
+
+                // 3. Если название так и не найдено, пробуем ещё раз (если попытки не исчерпаны)
+                if (!item.title && !item.name && retry < config.maxRetries) {
+                    console.log(`[Lampa-ReYohoho] Повторная попытка получения данных (${retry + 1})`);
+                    return new Promise(resolve => 
+                        setTimeout(() => resolve(getTmdbData(retry + 1)), 500)
+                    );
+                }
+
+                // 4. Если данные получены — возвращаем их
+                if (item.title || item.name) {
+                    return {
+                        id: item.id,
+                        type: item.type,
+                        title: item.title || item.name,
+                        year: item.year,
+                        poster: item.poster || item.cover || ''
+                    };
+                } else {
+                    console.error("[Lampa-ReYohoho] Данные не найдены");
+                    return null;
+                }
             } catch (e) {
                 console.error("[Lampa-ReYohoho] Ошибка получения данных:", e);
                 return null;
             }
         }
 
-        // Создаем кнопку в интерфейсе
+        // 🎬 Создаём кнопку в интерфейсе
         function createButton() {
             const buttonId = 'reyohoho-bridge-btn';
             
-            // Удаляем старую кнопку если есть
-            document.getElementById(buttonId)?.remove();
+            // Удаляем старую кнопку, если есть
+            const oldButton = document.getElementById(buttonId);
+            if (oldButton) oldButton.remove();
 
             const button = document.createElement('div');
             button.id = buttonId;
@@ -82,10 +116,11 @@
                 ReYohoho
             `;
 
-            // Добавляем обработчик клика
+            // 🔍 Обработчик клика (поиск + запуск плеера)
             button.addEventListener('click', async function() {
-                const tmdbData = getTmdbData();
-                if (!tmdbData || !tmdbData.title) {
+                const tmdbData = await getTmdbData();
+                
+                if (!tmdbData?.title) {
                     Lampa.Noty.show("Не удалось получить данные о контенте", "error");
                     return;
                 }
@@ -93,65 +128,34 @@
                 Lampa.Noty.show(`Поиск: ${tmdbData.title}...`, "info");
                 
                 try {
-                    // Открываем ReYohoho в скрытом iframe
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    iframe.src = `${config.reyohohoUrl}?search=${encodeURIComponent(tmdbData.title)}`;
-                    document.body.appendChild(iframe);
-
-                    // Ждем загрузки iframe
-                    await new Promise(resolve => iframe.onload = resolve);
+                    // Открываем ReYohoho в новой вкладке
+                    const searchUrl = `${config.reyohohoUrl}${encodeURIComponent(tmdbData.title + " " + tmdbData.year)}`;
+                    window.open(searchUrl, '_blank');
                     
-                    // Получаем поток из ReYohoho
-                    const streamUrl = await iframe.contentWindow.postMessage({
-                        action: 'getStream',
-                        title: tmdbData.title,
-                        year: tmdbData.year,
-                        type: tmdbData.type
-                    }, config.reyohohoUrl);
-
-                    if (streamUrl) {
-                        Lampa.Player.play({
-                            title: tmdbData.title,
-                            files: [{url: streamUrl, quality: "Auto"}],
-                            poster: tmdbData.poster
-                        });
-                    } else {
-                        Lampa.Noty.show("Не удалось получить поток", "error");
-                    }
-                    
-                    document.body.removeChild(iframe);
+                    // (Опционально) Можно добавить автоматическое получение потока через API, если оно есть
                 } catch (e) {
                     console.error("[Lampa-ReYohoho] Ошибка:", e);
-                    Lampa.Noty.show("Ошибка при получении потока", "error");
+                    Lampa.Noty.show("Ошибка при поиске", "error");
                 }
             });
 
             document.body.appendChild(button);
         }
 
-        // Инициализация
+        // 🚀 Инициализация
         function init() {
             createButton();
             
             // Обновляем кнопку при смене контента
-            Lampa.Listener.follow('content', (e) => {
-                if (e.type === 'item') {
-                    setTimeout(createButton, 300);
-                }
-            });
+            if (Lampa.Listener && Lampa.Listener.follow) {
+                Lampa.Listener.follow('content', (e) => {
+                    if (e.type === 'item') {
+                        setTimeout(createButton, 500);
+                    }
+                });
+            }
         }
 
         init();
-    });
-
-    // Обработчик сообщений от ReYohoho
-    window.addEventListener('message', (event) => {
-        if (event.origin !== config.reyohohoUrl) return;
-        
-        if (event.data.action === 'streamReady') {
-            const streamUrl = event.data.url;
-            // Здесь можно передать streamUrl в Lampa Player
-        }
     });
 })();
