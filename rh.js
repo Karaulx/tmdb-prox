@@ -1,72 +1,118 @@
-// Проверяем, что Lampa полностью загружена
 (function() {
-    // Ожидание загрузки Lampa
+    // 1. Ожидание полной загрузки Lampa
     function waitForLampa(callback) {
-        if (window.Lampa && window.Lampa.Storage) {
+        if (window.Lampa && window.Lampa.Storage && window.Lampa.Listener) {
             callback();
         } else {
-            setTimeout(() => waitForLampa(callback), 100);
+            setTimeout(() => waitForLampa(callback), 200);
         }
     }
 
     waitForLampa(function() {
-        console.log('Lampa loaded, initializing ReYohoho plugin');
+        console.log('Lampa loaded, starting ReYohoho plugin');
+        
+        // 2. Функция для получения ID контента из URL
+        function extractIdFromUrl() {
+            const path = window.location.pathname;
+            const patterns = [
+                /\/movie\/(\d+)/,
+                /\/tv\/(\d+)/,
+                /\/item\/(\d+)/,
+                /\/film\/(\d+)/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = path.match(pattern);
+                if (match && match[1]) return match[1];
+            }
+            return null;
+        }
 
-        // 1. Функция для получения текущего контента с защитой от ошибок
-        function getCurrentContent() {
+        // 3. Получение данных контента
+        function getContentData() {
             try {
-                // Пробуем разные методы получения данных
-                const item = Lampa.Storage.get('current_item') || 
-                            Lampa.Storage.get('card_data') || 
-                            {};
+                // Основные методы получения данных
+                const storageItem = Lampa.Storage.get('current_item') || 
+                                   Lampa.Storage.get('card_data') || 
+                                   {};
                 
-                // Если данных нет, пробуем получить из URL
-                if (!item.id && window.location.pathname.includes('/movie/')) {
-                    const id = window.location.pathname.split('/movie/')[1].split('/')[0];
-                    if (id) return {id: id, type: 'movie'};
+                // Если в хранилище нет ID, пробуем из URL
+                if (!storageItem.id) {
+                    const id = extractIdFromUrl();
+                    if (id) {
+                        return {
+                            id: id,
+                            type: window.location.pathname.includes('/tv/') ? 'tv' : 'movie',
+                            title: document.title.replace(/ - Lampa$/, '')
+                        };
+                    }
                 }
                 
-                return item;
+                return storageItem;
             } catch (e) {
                 console.error('Error getting content:', e);
                 return {};
             }
         }
 
-        // 2. Функция добавления кнопки с улучшенным поиском контейнера
-        function addReYohohoButton() {
+        // 4. Добавление кнопки с гарантированным отображением
+        function addButton() {
             // Удаляем старые кнопки
             $('.re-yohoho-button').remove();
 
-            // Создаем временную тестовую кнопку
-            const testButton = $(`
-                <div class="re-yohoho-test-button" 
+            // Получаем данные
+            const item = getContentData();
+            console.log('Content data:', item);
+
+            // Создаем кнопку с абсолютным позиционированием
+            const button = $(`
+                <div class="re-yohoho-button" 
                      style="position: fixed;
                             bottom: 20px;
                             right: 20px;
-                            padding: 10px;
-                            background: #ff0000;
-                            color: white;
+                            padding: 12px 16px;
+                            background: #00ff00;
+                            color: #000;
+                            font-weight: bold;
+                            border-radius: 8px;
                             z-index: 99999;
-                            border-radius: 5px;
-                            font-size: 16px;">
-                    TEST ReYohoho
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="#000">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"/>
+                    </svg>
+                    ReYohoho
                 </div>
             `);
-            
-            testButton.on('click', function() {
-                const item = getCurrentContent();
-                console.log('Debug content data:', item);
-                Lampa.Noty.show(`Content ID: ${item.id || 'none'}`);
-            });
-            
-            $('body').append(testButton);
 
-            // Основная кнопка
-            function addMainButton() {
+            // Обработчик клика
+            button.on('click', function() {
+                if (!item.id) {
+                    Lampa.Noty.show('ID контента не найден', 'error');
+                    return;
+                }
+
+                const type = item.type === 'movie' ? 'movie' : 'tv';
+                const url = `https://reyohoho.github.io/reyohoho/${type}/${item.id}`;
+                
+                Lampa.Activity.push({
+                    url: url,
+                    component: 'full',
+                    source: 'reyohoho',
+                    title: item.title || 'ReYohoho'
+                });
+            });
+
+            // Добавляем кнопку
+            $('body').append(button);
+            console.log('ReYohoho button added');
+
+            // Дополнительно пробуем найти стандартный контейнер
+            setTimeout(() => {
                 const container = $('.full-start__buttons, .card__buttons, .full-buttons').first();
                 if (container.length) {
-                    const button = $(`
+                    const mainButton = $(`
                         <div class="full-start__button selector re-yohoho-button" 
                              data-action="reyohoho"
                              style="border: 2px solid #00ff00;">
@@ -77,87 +123,42 @@
                         </div>
                     `);
                     
-                    button.on('hover:enter', function() {
-                        const item = getCurrentContent();
-                        if (!item.id) {
-                            Lampa.Noty.show('Не удалось получить данные контента', 'error');
-                            return;
-                        }
-                        
-                        const type = item.type === 'movie' ? 'movie' : 'tv';
-                        const url = `https://reyohoho.github.io/reyohoho/${type}/${item.id}`;
-                        
-                        // Варианты открытия
-                        new Lampa.Menu({
-                            title: 'Выберите вариант',
-                            items: [
-                                {
-                                    name: 'Открыть в ReYohoho',
-                                    action: () => {
-                                        Lampa.Activity.push({
-                                            url: url,
-                                            component: 'full',
-                                            source: 'reyohoho'
-                                        });
-                                    }
-                                },
-                                {
-                                    name: 'Открыть в браузере',
-                                    action: () => {
-                                        window.open(url, '_blank');
-                                    }
-                                }
-                            ]
-                        }).show();
+                    mainButton.on('hover:enter', function() {
+                        button.trigger('click');
                     });
                     
-                    container.prepend(button);
-                    testButton.remove();
-                    console.log('Main ReYohoho button added');
+                    container.prepend(mainButton);
                 }
-            }
-
-            // Пробуем добавить основную кнопку несколько раз
-            let attempts = 0;
-            const buttonInterval = setInterval(() => {
-                attempts++;
-                if (attempts > 5) {
-                    clearInterval(buttonInterval);
-                    Lampa.Noty.show('Не удалось найти контейнер для кнопки', 'error');
-                    return;
-                }
-                
-                addMainButton();
-                if ($('.re-yohoho-button').length) clearInterval(buttonInterval);
             }, 500);
         }
 
-        // 3. Инициализация плагина
-        function initPlugin() {
+        // 5. Инициализация плагина
+        function init() {
             // Первая попытка
-            addReYohohoButton();
+            addButton();
             
-            // Следим за изменениями интерфейса
+            // Следим за изменениями
             Lampa.Listener.follow('full', function(e) {
-                if (e.type === 'start') {
-                    setTimeout(addReYohohoButton, 300);
-                }
+                if (e.type === 'start') setTimeout(addButton, 300);
             });
             
-            // Дополнительная проверка
-            setTimeout(() => {
+            // Периодическая проверка
+            const checkInterval = setInterval(() => {
                 if ($('.re-yohoho-button').length === 0) {
-                    addReYohohoButton();
+                    addButton();
                 }
             }, 3000);
+            
+            // Остановка через 15 секунд
+            setTimeout(() => clearInterval(checkInterval), 15000);
         }
 
-        // Запускаем
+        // Запуск
         if (window.appready) {
-            initPlugin();
+            init();
         } else {
             Lampa.Listener.follow('app', function(e) {
-                if (e.type === 'ready') initPlugin();
+                if (e.type === 'ready') init();
             });
         }
     });
