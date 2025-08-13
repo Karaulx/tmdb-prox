@@ -1,4 +1,4 @@
-// ReYohoho Plugin для Lampa (финальная версия)
+// ReYohoho Plugin для Lampa (финальная исправленная версия)
 (function() {
     // 1. Конфигурация
     const config = {
@@ -7,35 +7,45 @@
         debugMode: true
     };
 
-    // 2. Получаем ID и тип из URL
-    function getContentData() {
+    // 2. Получаем точные данные контента
+    function getExactContentData() {
+        // Параметры из URL
         const params = new URLSearchParams(window.location.search);
-        const id = params.get('card') || params.get('id');
-        const type = params.get('media') === 'tv' ? 'tv' : 'movie';
+        const urlId = params.get('card') || params.get('id');
+        const urlType = params.get('media') === 'tv' ? 'tv' : 'movie';
         
+        // Данные из TMDB API (из логов)
+        let tmdbId, tmdbType;
+        const apiMatch = window.location.href.match(/tmdb\.org\/3\/(movie|tv)\/(\d+)/);
+        if (apiMatch) {
+            tmdbType = apiMatch[1];
+            tmdbId = apiMatch[2];
+        }
+        
+        // Приоритет: TMDB API > URL параметры
         return {
-            id: id,
-            type: id ? type : undefined,
-            source: 'url_params'
+            id: tmdbId || urlId,
+            type: tmdbType || urlType,
+            source: tmdbId ? 'tmdb_api' : 'url_params'
         };
     }
 
-    // 3. Создаем кнопку с улучшенной обработкой
+    // 3. Создаем кнопку с правильным URL
     function createButton() {
-        const content = getContentData();
+        const content = getExactContentData();
         
-        // Диагностическая информация
+        // Диагностика
         if (config.debugMode) {
-            console.group('[ReYohoho] Debug Info');
-            console.log('URL Params:', new URLSearchParams(window.location.search).toString());
-            console.log('Content Data:', content);
-            console.log('Lampa Storage:', Lampa.Storage.get('current_item'));
+            console.group('[ReYohoho] Точные данные:');
+            console.log('Контент:', content);
+            console.log('Текущий URL:', window.location.href);
+            console.log('TMDB API вызовы:', performance.getEntries().filter(e => e.name.includes('themoviedb')));
             console.groupEnd();
         }
 
-        // Создаем HTML кнопки
+        // Создаем кнопку
         const button = $(`
-            <div id="reyohoho-final-button" style="
+            <div id="reyohoho-pro-button" style="
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
@@ -49,8 +59,7 @@
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                box-shadow: 0 0 10px rgba(0,0,0,0.5);
-                font-family: Arial, sans-serif;">
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="#000">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"/>
                 </svg>
@@ -61,47 +70,45 @@
         // Обработчик клика
         button.on('click', function() {
             if (!content.id) {
-                Lampa.Noty.show('Ошибка: ID контента не найден', 'error');
+                Lampa.Noty.show('Ошибка: ID контента не определен', 'error');
                 return;
             }
 
-            const url = `https://reyohoho.github.io/reyohoho/${content.type}/${content.id}`;
-            if (config.debugMode) console.log('[ReYohoho] Opening URL:', url);
+            // Фикс: правильный тип контента
+            const finalType = content.type || 'movie';
+            const url = `https://reyohoho.github.io/reyohoho/${finalType}/${content.id}`;
+            
+            if (config.debugMode) {
+                console.log('[ReYohoho] Final URL:', url);
+            }
             
             window.open(url, '_blank');
         });
 
-        // Добавляем кнопку
         $('body').append(button);
-        console.log('[ReYohoho] Кнопка создана');
+        console.log('[ReYohoho] Профессиональная кнопка создана');
     }
 
-    // 4. Инициализация с защитой от ошибок
-    function initPlugin() {
-        try {
-            // Ждем готовности DOM
-            if (document.readyState === 'complete') {
-                createButton();
-            } else {
-                window.addEventListener('load', createButton);
-            }
+    // 4. Умная инициализация
+    function init() {
+        // Ждем завершения API-запросов TMDB
+        setTimeout(() => {
+            createButton();
             
-            // Дополнительная попытка через 1 секунду
-            setTimeout(createButton, 1000);
-        } catch (e) {
-            console.error('[ReYohoho] Init error:', e);
-        }
+            // Дополнительная проверка через 2 секунды
+            setTimeout(() => {
+                if (!getExactContentData().id) {
+                    console.warn('[ReYohoho] Данные не получены, повторная попытка');
+                    createButton();
+                }
+            }, 2000);
+        }, 500);
     }
 
-    // Запускаем плагин
+    // Запуск
     if (typeof Lampa !== 'undefined') {
-        initPlugin();
+        init();
     } else {
-        const checkLampa = setInterval(() => {
-            if (typeof Lampa !== 'undefined') {
-                clearInterval(checkLampa);
-                initPlugin();
-            }
-        }, 200);
+        document.addEventListener('DOMContentLoaded', init);
     }
 })();
