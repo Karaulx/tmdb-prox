@@ -1,57 +1,75 @@
-// Ultimate Lampa-ReYohoho Bridge (точная версия)
+// Lampa-ReYohoho Auto-Play Bridge
 (function() {
     // Конфигурация
     const config = {
-        reyohohoUrl: "https://reyohoho.github.io/reyohoho/?search=",
+        reyohohoSearch: "https://reyohoho.github.io/reyohoho/?search=",
         buttonPosition: "bottom: 20px; right: 20px;",
         buttonColor: "#4CAF50",
-        debugMode: true
+        debugMode: true,
+        timeout: 10000 // 10 секунд на поиск потока
     };
 
-    // Ожидание полной загрузки страницы
-    function waitForLoad(callback) {
-        if (document.querySelector('.full-start-new__title')) {
+    // Ожидание элементов Lampa
+    function waitForLampa(callback) {
+        if (window.Lampa && document.querySelector('.full-start-new__title')) {
             callback();
         } else {
-            setTimeout(() => waitForLoad(callback), 100);
+            setTimeout(() => waitForLampa(callback), 100);
         }
     }
 
-    waitForLoad(function() {
-        console.log("[Lampa-ReYohoho] Страница загружена");
+    waitForLampa(function() {
+        console.log("[ReYohohoBridge] Инициализация");
 
         // Получение данных из карточки
         function getContentData() {
-            try {
-                // Основные элементы
-                const titleElement = document.querySelector('.full-start-new__title');
-                const yearElement = document.querySelector('.full-start-new__head span');
-                const posterElement = document.querySelector('.full-start-new__img.full--poster');
-                const typeElement = document.querySelector('.card__type');
-                
-                // Извлекаем данные
-                const title = titleElement ? titleElement.textContent.trim() : '';
-                const year = yearElement ? parseInt(yearElement.textContent) : new Date().getFullYear();
-                const poster = posterElement ? posterElement.src : '';
-                const type = typeElement ? (typeElement.textContent === 'TV' ? 'tv' : 'movie') : 'movie';
-                
-                // Из URL получаем ID
-                const idMatch = window.location.href.match(/card=(\d+)/);
-                const id = idMatch ? idMatch[1] : '';
+            const data = {
+                id: window.location.href.match(/card=(\d+)/)?.[1] || '',
+                type: document.querySelector('.card__type')?.textContent === 'TV' ? 'tv' : 'movie',
+                title: document.querySelector('.full-start-new__title')?.textContent.trim() || '',
+                year: parseInt(document.querySelector('.full-start-new__head span')?.textContent) || new Date().getFullYear(),
+                poster: document.querySelector('.full-start-new__img.full--poster')?.src || ''
+            };
+            
+            console.log("[ReYohohoBridge] Данные:", data);
+            return data;
+        }
 
-                console.log("[Lampa-ReYohoho] Найдены данные:", {id, type, title, year, poster});
-                return {id, type, title, year, poster};
-            } catch (e) {
-                console.error("[Lampa-ReYohoho] Ошибка при получении данных:", e);
-                return null;
-            }
+        // Создание iframe для ReYohoho
+        function createHiddenIframe(url) {
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = url;
+            document.body.appendChild(iframe);
+            return iframe;
+        }
+
+        // Поиск потока в iframe
+        function findStreamInIframe(iframe, callback) {
+            const startTime = Date.now();
+            
+            const checkInterval = setInterval(() => {
+                try {
+                    // Попробуем получить поток из iframe
+                    const player = iframe.contentWindow.document.querySelector('video');
+                    if (player && player.src) {
+                        clearInterval(checkInterval);
+                        callback(player.src);
+                    } 
+                    // Если время вышло
+                    else if (Date.now() - startTime > config.timeout) {
+                        clearInterval(checkInterval);
+                        callback(null);
+                    }
+                } catch (e) {
+                    // Игнорируем ошибки кросс-доменных ограничений
+                }
+            }, 500);
         }
 
         // Создание кнопки
         function createButton() {
-            const buttonId = 'reyohoho-precise-btn';
-            
-            // Удаляем старую кнопку если есть
+            const buttonId = 'reyohoho-auto-btn';
             document.getElementById(buttonId)?.remove();
 
             const button = document.createElement('div');
@@ -76,58 +94,59 @@
                         box-shadow: 0 0 10px rgba(0,0,0,0.5);
                         transition: all 0.3s;
                     }
-                    #${buttonId}:hover {
-                        transform: scale(1.05);
-                        opacity: 0.9;
-                    }
-                    #${buttonId}:active {
-                        transform: scale(0.95);
-                    }
+                    #${buttonId}:hover { transform: scale(1.05); opacity: 0.9; }
+                    #${buttonId}:active { transform: scale(0.95); }
                 </style>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"></path>
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"/>
                 </svg>
-                ReYohoho
+                ReYohoho Auto
             `;
 
-            // Обработчик клика
-            button.addEventListener('click', function() {
-                const contentData = getContentData();
-                
-                if (!contentData || !contentData.title) {
-                    alert("Не удалось получить данные о контенте. Пожалуйста, убедитесь что вы находитесь на странице фильма/сериала.");
+            button.addEventListener('click', async function() {
+                const content = getContentData();
+                if (!content.title) {
+                    Lampa.Noty.show("Не удалось получить данные", "error");
                     return;
                 }
 
-                const searchQuery = `${contentData.title} ${contentData.year}`;
-                const searchUrl = `${config.reyohohoUrl}${encodeURIComponent(searchQuery)}`;
+                Lampa.Noty.show(`Поиск "${content.title}"...`, "info");
                 
-                console.log("[Lampa-ReYohoho] Открываем поиск:", searchUrl);
-                window.open(searchUrl, '_blank');
+                // 1. Открываем ReYohoho в скрытом iframe
+                const searchUrl = `${config.reyohohoSearch}${encodeURIComponent(content.title + ' ' + content.year)}`;
+                const iframe = createHiddenIframe(searchUrl);
+                
+                // 2. Ищем поток
+                findStreamInIframe(iframe, function(streamUrl) {
+                    iframe.remove();
+                    
+                    if (streamUrl) {
+                        Lampa.Noty.show("Поток найден!", "success");
+                        
+                        // 3. Запускаем в плеере Lampa
+                        Lampa.Player.play({
+                            title: content.title,
+                            files: [{url: streamUrl, quality: "Auto"}],
+                            poster: content.poster
+                        });
+                    } else {
+                        Lampa.Noty.show("Не удалось найти поток", "error");
+                        window.open(searchUrl, '_blank'); // Открываем вручную
+                    }
+                });
             });
 
             document.body.appendChild(button);
-            console.log("[Lampa-ReYohoho] Кнопка создана");
         }
 
         // Инициализация
-        function init() {
-            createButton();
-            
-            // Обновляем кнопку при изменениях на странице
-            const observer = new MutationObserver(function() {
-                if (!document.getElementById('reyohoho-precise-btn')) {
-                    createButton();
-                }
-            });
-            
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-        }
-
-        // Запуск
-        init();
+        createButton();
+        
+        // Авто-обновление кнопки
+        new MutationObserver(() => {
+            if (!document.getElementById('reyohoho-auto-btn')) {
+                createButton();
+            }
+        }).observe(document.body, {childList: true, subtree: true});
     });
 })();
