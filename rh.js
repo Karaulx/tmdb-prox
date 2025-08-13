@@ -1,7 +1,8 @@
+// ReYohoho Plugin для Lampa
 (function() {
-    // 1. Ожидание полной загрузки Lampa
+    // 1. Ждем загрузки Lampa
     function waitForLampa(callback) {
-        if (window.Lampa && window.Lampa.Storage && window.Lampa.Listener) {
+        if (window.Lampa && window.Lampa.Storage) {
             callback();
         } else {
             setTimeout(() => waitForLampa(callback), 200);
@@ -9,64 +10,74 @@
     }
 
     waitForLampa(function() {
-        console.log('Lampa loaded, starting ReYohoho plugin');
+        console.log('[ReYohoho] Lampa detected, starting plugin');
         
-        // 2. Функция для получения ID контента из URL
-        function extractIdFromUrl() {
-            const path = window.location.pathname;
-            const patterns = [
-                /\/movie\/(\d+)/,
-                /\/tv\/(\d+)/,
-                /\/item\/(\d+)/,
-                /\/film\/(\d+)/
+        // 2. Функция диагностики - собираем все возможные данные
+        function debugInfo() {
+            const info = {
+                // Основные хранилища
+                storage: {
+                    current_item: Lampa.Storage.get('current_item'),
+                    card_data: Lampa.Storage.get('card_data'),
+                    last_card: Lampa.Storage.get('last_card')
+                },
+                
+                // URL страницы
+                url: {
+                    full: window.location.href,
+                    path: window.location.pathname,
+                    id: null,
+                    type: null
+                },
+                
+                // DOM элементы
+                elements: {
+                    buttons_container: $('.full-start__buttons').length,
+                    card_title: $('.card__title, .full-start__title').text().trim(),
+                    body_class: document.body.className
+                }
+            };
+
+            // Парсим ID и тип из URL
+            const urlMatch = window.location.pathname.match(/\/(movie|tv)\/(\d+)/);
+            if (urlMatch) {
+                info.url.type = urlMatch[1];
+                info.url.id = urlMatch[2];
+            }
+
+            return info;
+        }
+
+        // 3. Получаем ID контента всеми возможными способами
+        function getContentId() {
+            const debug = debugInfo();
+            console.log('[ReYohoho] Debug info:', debug);
+            
+            // Пробуем получить ID из разных источников
+            const idSources = [
+                debug.storage.current_item?.id,
+                debug.storage.card_data?.id,
+                debug.storage.last_card?.id,
+                debug.url.id
             ];
             
-            for (const pattern of patterns) {
-                const match = path.match(pattern);
-                if (match && match[1]) return match[1];
+            for (const id of idSources) {
+                if (id && !isNaN(id)) return id;
             }
+            
             return null;
         }
 
-        // 3. Получение данных контента
-        function getContentData() {
-            try {
-                // Основные методы получения данных
-                const storageItem = Lampa.Storage.get('current_item') || 
-                                   Lampa.Storage.get('card_data') || 
-                                   {};
-                
-                // Если в хранилище нет ID, пробуем из URL
-                if (!storageItem.id) {
-                    const id = extractIdFromUrl();
-                    if (id) {
-                        return {
-                            id: id,
-                            type: window.location.pathname.includes('/tv/') ? 'tv' : 'movie',
-                            title: document.title.replace(/ - Lampa$/, '')
-                        };
-                    }
-                }
-                
-                return storageItem;
-            } catch (e) {
-                console.error('Error getting content:', e);
-                return {};
-            }
-        }
+        // 4. Создаем кнопку с гарантированным отображением
+        function createButton() {
+            const buttonId = 'reyohoho-fixed-button';
+            
+            // Удаляем старую кнопку если есть
+            $(`#${buttonId}`).remove();
 
-        // 4. Добавление кнопки с гарантированным отображением
-        function addButton() {
-            // Удаляем старые кнопки
-            $('.re-yohoho-button').remove();
-
-            // Получаем данные
-            const item = getContentData();
-            console.log('Content data:', item);
-
-            // Создаем кнопку с абсолютным позиционированием
+            // Создаем кнопку
             const button = $(`
-                <div class="re-yohoho-button" 
+                <div id="${buttonId}" 
                      style="position: fixed;
                             bottom: 20px;
                             right: 20px;
@@ -78,7 +89,9 @@
                             z-index: 99999;
                             display: flex;
                             align-items: center;
-                            gap: 8px;">
+                            gap: 8px;
+                            cursor: pointer;
+                            box-shadow: 0 0 10px rgba(0,0,0,0.5);">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="#000">
                         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"/>
                     </svg>
@@ -88,78 +101,44 @@
 
             // Обработчик клика
             button.on('click', function() {
-                if (!item.id) {
-                    Lampa.Noty.show('ID контента не найден', 'error');
+                const contentId = getContentId();
+                const debug = debugInfo();
+                
+                if (!contentId) {
+                    Lampa.Noty.show(`Не удалось получить ID. Проверьте консоль (F12)`, 'error');
+                    console.error('[ReYohoho] Не могу определить ID контента. Полные данные:', debug);
                     return;
                 }
-
-                const type = item.type === 'movie' ? 'movie' : 'tv';
-                const url = `https://reyohoho.github.io/reyohoho/${type}/${item.id}`;
                 
-                Lampa.Activity.push({
-                    url: url,
-                    component: 'full',
-                    source: 'reyohoho',
-                    title: item.title || 'ReYohoho'
-                });
+                // Определяем тип контента
+                const type = debug.storage.current_item?.type || 
+                              debug.storage.card_data?.type || 
+                              (window.location.pathname.includes('/tv/') ? 'tv' : 'movie');
+                
+                const url = `https://reyohoho.github.io/reyohoho/${type}/${contentId}`;
+                console.log('[ReYohoho] Opening URL:', url);
+                
+                window.open(url, '_blank');
             });
 
-            // Добавляем кнопку
+            // Добавляем кнопку на страницу
             $('body').append(button);
-            console.log('ReYohoho button added');
-
-            // Дополнительно пробуем найти стандартный контейнер
-            setTimeout(() => {
-                const container = $('.full-start__buttons, .card__buttons, .full-buttons').first();
-                if (container.length) {
-                    const mainButton = $(`
-                        <div class="full-start__button selector re-yohoho-button" 
-                             data-action="reyohoho"
-                             style="border: 2px solid #00ff00;">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="#00ff00">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"/>
-                            </svg>
-                            <span>ReYohoho</span>
-                        </div>
-                    `);
-                    
-                    mainButton.on('hover:enter', function() {
-                        button.trigger('click');
-                    });
-                    
-                    container.prepend(mainButton);
-                }
-            }, 500);
+            console.log('[ReYohoho] Button created with fixed positioning');
         }
 
         // 5. Инициализация плагина
-        function init() {
-            // Первая попытка
-            addButton();
+        function initPlugin() {
+            // Создаем кнопку сразу
+            createButton();
             
-            // Следим за изменениями
-            Lampa.Listener.follow('full', function(e) {
-                if (e.type === 'start') setTimeout(addButton, 300);
-            });
+            // Дополнительные попытки (на случай динамической загрузки контента)
+            setTimeout(createButton, 1000);
+            setTimeout(createButton, 3000);
             
-            // Периодическая проверка
-            const checkInterval = setInterval(() => {
-                if ($('.re-yohoho-button').length === 0) {
-                    addButton();
-                }
-            }, 3000);
-            
-            // Остановка через 15 секунд
-            setTimeout(() => clearInterval(checkInterval), 15000);
+            // Можно добавить слежение за изменениями, но для простоты ограничимся таймаутами
         }
 
-        // Запуск
-        if (window.appready) {
-            init();
-        } else {
-            Lampa.Listener.follow('app', function(e) {
-                if (e.type === 'ready') init();
-            });
-        }
+        // Запускаем плагин
+        initPlugin();
     });
 })();
