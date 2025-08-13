@@ -1,12 +1,12 @@
-// Lampa-ReYohoho AutoStream Bridge v6.0
+// Lampa-ReYohoho Smart Bridge v7.0 (Client-side only)
 (function() {
     // Конфигурация
     const config = {
-        reyohohoSearch: "https://reyohoho.github.io/reyohoho/?search=",
-        corsProxy: "https://api.allorigins.win/raw?url=", // Прокси для обхода CORS
+        reyohohoUrl: "https://reyohoho.github.io/reyohoho/?search=",
         buttonPosition: "bottom: 20px; right: 20px;",
         buttonColor: "#FF5722",
-        timeout: 10000
+        checkInterval: 500,
+        maxAttempts: 20
     };
 
     // Ожидаем загрузки Lampa
@@ -19,20 +19,21 @@
     }
 
     waitForLampa(function() {
-        console.log("[AutoStream] Инициализация...");
+        console.log("[SmartBridge] Инициализация...");
 
         // Получаем данные о контенте
         function getContentData() {
             return {
                 title: document.querySelector('.full-start-new__title')?.textContent.trim() || '',
                 year: document.querySelector('.full-start-new__head span')?.textContent || '',
-                poster: document.querySelector('.full-start-new__img.full--poster')?.src || ''
+                poster: document.querySelector('.full-start-new__img.full--poster')?.src || '',
+                translation: document.querySelector('.selector__item.active')?.textContent.trim() || ''
             };
         }
 
         // Создаем кнопку
         function createButton() {
-            const btnId = 'reyohoho-autostream-btn';
+            const btnId = 'reyohoho-smart-btn';
             document.getElementById(btnId)?.remove();
 
             const button = document.createElement('div');
@@ -68,70 +69,56 @@
                     @keyframes spin { to { transform: rotate(360deg); } }
                 </style>
                 <div class="loader"></div>
-                <span class="text">ReYohoho Auto</span>
+                <span class="text">ReYohoho Smart</span>
             `;
 
-            button.addEventListener('click', async function() {
+            button.addEventListener('click', function() {
                 const content = getContentData();
                 if (!content.title) {
                     showAlert('Не удалось получить данные о фильме');
                     return;
                 }
 
-                showLoading(button);
-                
-                try {
-                    // 1. Ищем контент через ReYohoho
-                    const searchUrl = `${config.reyohohoSearch}${encodeURIComponent(content.title + ' ' + content.year)}`;
-                    const html = await fetchPage(searchUrl);
-                    
-                    // 2. Парсим HTML чтобы найти ссылку на плеер
-                    const playerUrl = parsePlayerUrl(html);
-                    if (!playerUrl) throw new Error('Плеер не найден');
-                    
-                    // 3. Получаем HTML страницы плеера
-                    const playerHtml = await fetchPage(playerUrl);
-                    
-                    // 4. Извлекаем прямую ссылку на видео
-                    const videoUrl = parseVideoUrl(playerHtml);
-                    if (!videoUrl) throw new Error('Ссылка на видео не найдена');
-                    
-                    // 5. Запускаем в Lampa
-                    playInLampa(content, videoUrl);
-                    
-                } catch (error) {
-                    console.error("[AutoStream] Ошибка:", error);
-                    showAlert(`Автоматический поиск не удался: ${error.message}`);
-                } finally {
-                    hideLoading(button);
-                }
+                startStreamSearch(content, button);
             });
 
             document.body.appendChild(button);
+            return button;
         }
 
-        // Загрузка страницы через прокси
-        async function fetchPage(url) {
-            const response = await fetch(`${config.corsProxy}${encodeURIComponent(url)}`, {
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                timeout: config.timeout
-            });
-            return await response.text();
-        }
+        // Запуск поиска потока
+        function startStreamSearch(content, button) {
+            showLoading(button);
+            
+            // Создаем скрытый iframe
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = `${config.reyohohoUrl}${encodeURIComponent(content.title + ' ' + content.year)}`;
+            document.body.appendChild(iframe);
 
-        // Парсинг URL плеера
-        function parsePlayerUrl(html) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            return doc.querySelector('a[href*="/watch/"]')?.href;
-        }
+            let attempts = 0;
+            const checkStream = setInterval(() => {
+                attempts++;
+                try {
+                    // Пытаемся найти видео в iframe
+                    const player = iframe.contentDocument?.querySelector('video');
+                    if (player?.src) {
+                        clearInterval(checkStream);
+                        iframe.remove();
+                        playInLampa(content, player.src);
+                        hideLoading(button);
+                    }
+                } catch (e) {
+                    // Игнорируем CORS ошибки
+                }
 
-        // Парсинг URL видео
-        function parseVideoUrl(html) {
-            const videoMatch = html.match(/src:\s*["'](https?:\/\/[^"']+\.(m3u8|mp4|mkv))["']/i);
-            return videoMatch ? videoMatch[1] : null;
+                if (attempts >= config.maxAttempts) {
+                    clearInterval(checkStream);
+                    iframe.remove();
+                    hideLoading(button);
+                    showAlert('Автоматический поиск не удался. Попробуйте вручную через DevTools.');
+                }
+            }, config.checkInterval);
         }
 
         // Воспроизведение в Lampa
@@ -163,7 +150,7 @@
         // Скрыть индикатор загрузки
         function hideLoading(button) {
             button.querySelector('.loader').style.display = 'none';
-            button.querySelector('.text').textContent = 'ReYohoho Auto';
+            button.querySelector('.text').textContent = 'ReYohoho Smart';
             button.style.opacity = '1';
             button.style.cursor = 'pointer';
         }
