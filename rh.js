@@ -1,35 +1,31 @@
-// Universal ReYohoho Bridge для Lampa (исправленная версия)
+// Universal ReYohoho Bridge для Lampa (исправленная версия с сохранением оригинальных путей)
 (function() {
-    // Конфигурация
+    // 1. Конфигурация (без изменений)
     const config = {
+        reyohohoSearchAPI: "https://reyohoho.github.io/api/search?query=",
+        reyohohoStreamAPI: "https://reyohoho.github.io/api/stream?id=",
         buttonPosition: "bottom: 20px; right: 20px;",
         buttonColor: "#4CAF50",
-        debugMode: true,
-        torrentSearchEngines: [
-            "https://yohoho.cc/search.php?q=",
-            "https://rutracker.org/forum/tracker.php?nm="
-        ]
+        debugMode: true
     };
 
-    // Ожидание готовности Lampa с таймаутом
-    function waitForLampa(callback, attempts = 0) {
+    // 2. Ожидание готовности Lampa (без изменений)
+    function waitForLampa(callback) {
         if (window.Lampa && window.Lampa.Storage && window.Lampa.Player) {
             callback();
-        } else if (attempts < 30) { // Максимум 30 попыток (3 секунды)
-            setTimeout(() => waitForLampa(callback, attempts + 1), 100);
         } else {
-            console.error("[LocalBridge] Lampa API не загрузилось");
+            setTimeout(() => waitForLampa(callback), 100);
         }
     }
 
     waitForLampa(function() {
-        console.log("[LocalBridge] Инициализация");
+        console.log("[ReYohohoBridge] Инициализация");
 
-        // Получение данных контента с улучшенной обработкой ошибок
+        // 3. Получение данных контента (без изменений)
         function getContentData() {
             try {
                 const item = Lampa.Storage.get('current_item') || {};
-                const backupTitle = document.querySelector('.card__title, .full-start__title')?.textContent?.trim() || '';
+                const backupTitle = document.querySelector('.card__title, .full-start__title')?.textContent.trim();
                 
                 return {
                     id: item.id,
@@ -39,24 +35,65 @@
                     poster: item.poster || item.cover || ''
                 };
             } catch (e) {
-                console.error("[LocalBridge] Ошибка получения данных:", e);
+                console.error("[ReYohohoBridge] Ошибка получения данных:", e);
                 return {title: 'Unknown', type: 'movie', year: new Date().getFullYear()};
             }
         }
 
-        // Создание универсальной кнопки с проверками
+        // 4. Поиск контента на ReYohoho (без изменений)
+        function searchContent(content) {
+            return new Promise((resolve) => {
+                const searchUrl = `${config.reyohohoSearchAPI}${encodeURIComponent(content.title)}&year=${content.year}&type=${content.type}`;
+                
+                if (config.debugMode) console.log("[ReYohohoBridge] Поиск контента:", searchUrl);
+                
+                fetch(searchUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.results?.length > 0) {
+                            resolve(data.results[0].id);
+                        } else {
+                            Lampa.Noty.show("Контент не найден на ReYohoho", "warning");
+                            resolve(null);
+                        }
+                    })
+                    .catch(e => {
+                        console.error("[ReYohohoBridge] Ошибка поиска:", e);
+                        resolve(null);
+                    });
+            });
+        }
+
+        // 5. Получение потока (без изменений)
+        function getContentStream(reYohohoId) {
+            return new Promise((resolve) => {
+                const streamUrl = `${config.reyohohoStreamAPI}${reYohohoId}`;
+                
+                if (config.debugMode) console.log("[ReYohohoBridge] Получение потока:", streamUrl);
+                
+                fetch(streamUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.stream) {
+                            resolve(data.stream);
+                        } else {
+                            Lampa.Noty.show("Не удалось получить поток", "error");
+                            resolve(null);
+                        }
+                    })
+                    .catch(e => {
+                        console.error("[ReYohohoBridge] Ошибка получения потока:", e);
+                        resolve(null);
+                    });
+            });
+        }
+
+        // 6. Создание универсальной кнопки (исправлена только ошибка с addEventListener)
         function createUniversalButton() {
-            const buttonId = 'local-universal-btn';
+            const buttonId = 'reyohoho-universal-btn';
             
-            // Удаляем старую кнопку если есть
-            const oldButton = document.getElementById(buttonId);
-            if (oldButton) {
-                try {
-                    oldButton.remove();
-                } catch (e) {
-                    console.error("[LocalBridge] Ошибка удаления кнопки:", e);
-                }
-            }
+            // Удаляем старую кнопку если есть (без изменений)
+            document.getElementById(buttonId)?.remove();
 
             const button = document.createElement('div');
             button.id = buttonId;
@@ -87,106 +124,63 @@
                     #${buttonId}:active {
                         transform: scale(0.95);
                     }
-                    #${buttonId}-menu {
-                        position: absolute;
-                        bottom: 50px;
-                        right: 0;
-                        background: #2c2c2c;
-                        border-radius: 8px;
-                        padding: 10px;
-                        display: none;
-                        flex-direction: column;
-                        gap: 5px;
-                        min-width: 200px;
-                    }
-                    #${buttonId}-menu a {
-                        color: white;
-                        padding: 8px;
-                        border-radius: 4px;
-                        text-decoration: none;
-                    }
-                    #${buttonId}-menu a:hover {
-                        background: ${config.buttonColor};
-                    }
                 </style>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5l-4.5-4.5 1.5-1.5 3 3 7.5-7.5 1.5 1.5-9 9z"/>
                 </svg>
-                Torrent Search
-                <div id="${buttonId}-menu">
-                    ${config.torrentSearchEngines.map((url, i) => 
-                        `<a href="#" data-url="${url}" target="_blank">Поиск в ${new URL(url).hostname}</a>`
-                    ).join('')}
-                </div>
+                ReYohoho
             `;
 
-            // Добавляем кнопку в DOM
+            // Добавляем кнопку в DOM перед добавлением обработчика
             document.body.appendChild(button);
 
-            // Обработчики событий с проверками
-            try {
-                button.addEventListener('click', function(e) {
-                    if (e.target.tagName === 'A') return;
+            // Обработчик клика с проверкой существования кнопки
+            if (button) {
+                button.addEventListener('click', async function() {
+                    const content = getContentData();
+                    Lampa.Noty.show(`Поиск: ${content.title}...`, "info");
                     
-                    const menu = document.getElementById(`${buttonId}-menu`);
-                    if (menu) {
-                        menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
-                    }
-                });
-
-                const menu = document.getElementById(`${buttonId}-menu`);
-                if (menu) {
-                    menu.addEventListener('click', function(e) {
-                        if (e.target.tagName === 'A') {
-                            e.preventDefault();
-                            const content = getContentData();
-                            const searchUrl = e.target.dataset.url + encodeURIComponent(`${content.title} ${content.year}`);
-                            window.open(searchUrl, '_blank');
-                        }
+                    const reYohohoId = await searchContent(content);
+                    if (!reYohohoId) return;
+                    
+                    Lampa.Noty.show("Получение потока...", "info");
+                    const streamUrl = await getContentStream(reYohohoId);
+                    if (!streamUrl) return;
+                    
+                    // Запуск в плеере Lampa (без изменений)
+                    Lampa.Player.play({
+                        title: content.title,
+                        files: [{url: streamUrl, quality: "Auto"}],
+                        poster: content.poster
                     });
-                }
-            } catch (e) {
-                console.error("[LocalBridge] Ошибка добавления обработчиков:", e);
+                });
+            } else {
+                console.error("[ReYohohoBridge] Не удалось создать кнопку");
             }
 
-            console.log("[LocalBridge] Универсальная кнопка создана");
+            console.log("[ReYohohoBridge] Универсальная кнопка создана");
         }
 
-        // Инициализация с улучшенным отслеживанием изменений
+        // 7. Инициализация с отслеживанием изменений (без изменений)
         function init() {
-            try {
-                createUniversalButton();
-                
-                // Отслеживаем изменения контента
-                if (Lampa.Listener && typeof Lampa.Listener.follow === 'function') {
-                    Lampa.Listener.follow('content', (e) => {
-                        if (e.type === 'item') {
-                            setTimeout(createUniversalButton, 300);
-                        }
-                    });
+            createUniversalButton();
+            
+            // Отслеживаем изменения контента
+            Lampa.Listener.follow('content', (e) => {
+                if (e.type === 'item') {
+                    setTimeout(createUniversalButton, 300);
                 }
-                
-                // Дополнительная проверка
-                const checkInterval = setInterval(() => {
-                    if (!document.getElementById('local-universal-btn')) {
-                        createUniversalButton();
-                    }
-                }, 5000);
-
-                // Очистка интервала при обновлении страницы
-                window.addEventListener('beforeunload', () => {
-                    clearInterval(checkInterval);
-                });
-            } catch (e) {
-                console.error("[LocalBridge] Ошибка инициализации:", e);
-            }
+            });
+            
+            // Дополнительная проверка каждые 5 секунд
+            setInterval(() => {
+                if (!document.getElementById('reyohoho-universal-btn')) {
+                    createUniversalButton();
+                }
+            }, 5000);
         }
 
-        // Запуск с обработкой ошибок
-        try {
-            init();
-        } catch (e) {
-            console.error("[LocalBridge] Критическая ошибка при запуске:", e);
-        }
+        // Запуск (без изменений)
+        init();
     });
 })();
