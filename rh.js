@@ -1,4 +1,4 @@
-// Lampa-ReYohoho Bridge (улучшенная версия с гарантированным получением данных)
+// Ultimate Lampa-ReYohoho Bridge
 (function() {
     // Конфигурация
     const config = {
@@ -7,97 +7,123 @@
         buttonColor: "#4CAF50",
         debugMode: true,
         maxRetries: 5,
-        retryDelay: 300
+        retryDelay: 500
     };
 
-    // Ожидаем загрузки Lampa
+    // Ожидаем полной загрузки Lampa
     function waitForLampa(callback, attempts = 0) {
-        if (window.Lampa && window.Lampa.Storage && window.Lampa.Player) {
+        const isReady = () => {
+            return window.Lampa && 
+                   window.Lampa.Storage && 
+                   window.Lampa.Player &&
+                   document.querySelector('body');
+        };
+
+        if (isReady()) {
             callback();
-        } else if (attempts < 30) {
+        } else if (attempts < 50) {
             setTimeout(() => waitForLampa(callback, attempts + 1), 100);
         } else {
-            console.error("[Lampa-ReYohoho] Lampa API не загрузилось");
+            console.error("[Lampa-ReYohoho] Lampa не загрузилась полностью");
         }
     }
 
     waitForLampa(function() {
         console.log("[Lampa-ReYohoho] Инициализация");
 
-        // Улучшенный метод получения данных
-        function getTmdbData() {
-            let item = {};
+        // Полный сбор данных со всех возможных источников
+        function getContentData() {
+            const data = {
+                id: '',
+                type: '',
+                title: '',
+                year: '',
+                poster: ''
+            };
+
             try {
                 // 1. Пробуем получить данные через Lampa API
                 const storageItem = Lampa.Storage.get('current_item') || {};
                 
-                // 2. Получаем основные данные
-                item = {
-                    id: storageItem.id,
-                    type: storageItem.type || (window.location.pathname.includes('/tv/') ? 'tv' : 'movie'),
-                    title: storageItem.title || storageItem.name || '',
-                    year: storageItem.year || new Date().getFullYear(),
-                    poster: storageItem.poster || storageItem.cover || ''
-                };
+                // 2. Получаем ID из разных источников
+                data.id = storageItem.id || 
+                         window.location.pathname.match(/\/(movie|tv)\/(\d+)/)?.[2] || 
+                         '';
 
-                // 3. Если название не найдено, ищем в DOM
-                if (!item.title) {
-                    const titleElement = document.querySelector('.card__title, .full-start__title, .player__title, [data-id="title"]');
-                    if (titleElement) {
-                        item.title = titleElement.textContent.trim();
-                        item.name = item.title;
+                // 3. Определяем тип контента
+                data.type = storageItem.type || 
+                           (window.location.pathname.includes('/tv/') ? 'tv' : 'movie');
+
+                // 4. Ищем название во всех возможных местах
+                const titleSources = [
+                    storageItem.title,
+                    storageItem.name,
+                    document.querySelector('.card__title')?.textContent,
+                    document.querySelector('.full-start__title')?.textContent,
+                    document.querySelector('.player__title')?.textContent,
+                    document.querySelector('.content__title')?.textContent,
+                    document.querySelector('[data-id="title"]')?.textContent,
+                    document.querySelector('h1')?.textContent
+                ];
+                data.title = titleSources.find(t => t && t.trim())?.trim() || '';
+
+                // 5. Ищем год
+                const yearSources = [
+                    storageItem.year,
+                    parseInt(document.querySelector('.card__year')?.textContent),
+                    parseInt(document.querySelector('.full-start__year')?.textContent),
+                    parseInt(document.querySelector('.player__year')?.textContent),
+                    parseInt(document.querySelector('[data-id="year"]')?.textContent),
+                    new Date().getFullYear()
+                ];
+                data.year = yearSources.find(y => y && !isNaN(y)) || new Date().getFullYear();
+
+                // 6. Ищем постер
+                const posterElements = [
+                    document.querySelector('.card__poster'),
+                    document.querySelector('.full-start__poster'),
+                    document.querySelector('.player__poster img'),
+                    document.querySelector('[data-id="poster"] img'),
+                    document.querySelector('.poster img')
+                ];
+                for (const el of posterElements) {
+                    if (el) {
+                        data.poster = el.src || el.getAttribute('data-src') || '';
+                        if (data.poster) break;
                     }
                 }
 
-                // 4. Если год не найден, ищем в DOM
-                if (!item.year || isNaN(item.year)) {
-                    const yearElement = document.querySelector('.card__year, .full-start__year, .player__year, [data-id="year"]');
-                    if (yearElement) {
-                        item.year = parseInt(yearElement.textContent) || new Date().getFullYear();
-                    }
-                }
-
-                // 5. Если постер не найден, ищем в DOM
-                if (!item.poster) {
-                    const posterElement = document.querySelector('.card__poster, .full-start__poster, .player__poster img, [data-id="poster"]');
-                    if (posterElement) {
-                        item.poster = posterElement.src || posterElement.getAttribute('data-src') || '';
-                    }
-                }
-
-                // 6. Если ID не найден, пробуем из URL
-                if (!item.id) {
-                    const idMatch = window.location.pathname.match(/\/(movie|tv)\/(\d+)/);
-                    if (idMatch) item.id = idMatch[2];
-                }
-
-                console.log("[Lampa-ReYohoho] Полученные данные:", item);
-                return item;
+                console.log("[Lampa-ReYohoho] Полученные данные:", data);
+                return data;
 
             } catch (e) {
-                console.error("[Lampa-ReYohoho] Ошибка получения данных:", e);
+                console.error("[Lampa-ReYohoho] Ошибка при получении данных:", e);
                 return null;
             }
         }
 
-        // Метод для повторных попыток получения данных
-        async function getTmdbDataWithRetry(retry = 0) {
-            const data = getTmdbData();
-            
-            if ((!data?.title && !data?.name) && retry < config.maxRetries) {
-                console.log(`[Lampa-ReYohoho] Повторная попытка получения данных (${retry + 1})`);
-                await new Promise(resolve => setTimeout(resolve, config.retryDelay));
-                return getTmdbDataWithRetry(retry + 1);
-            }
-            
-            return data;
-        }
-
-        // Создаем кнопку
+        // Создаем кнопку с проверкой всех условий
         function createButton() {
             const buttonId = 'reyohoho-bridge-btn';
-            document.getElementById(buttonId)?.remove();
+            
+            // Удаляем старую кнопку если есть
+            const oldButton = document.getElementById(buttonId);
+            if (oldButton) {
+                try {
+                    oldButton.remove();
+                } catch (e) {
+                    console.error("[Lampa-ReYohoho] Ошибка при удалении кнопки:", e);
+                }
+            }
 
+            // Проверяем, есть ли необходимые данные
+            const data = getContentData();
+            if (!data?.title) {
+                console.log("[Lampa-ReYohoho] Недостаточно данных для создания кнопки");
+                return;
+            }
+
+            // Создаем кнопку
             const button = document.createElement('div');
             button.id = buttonId;
             button.innerHTML = `
@@ -134,43 +160,56 @@
                 ReYohoho
             `;
 
-            button.addEventListener('click', async function() {
-                const tmdbData = await getTmdbDataWithRetry();
-                
-                if (!tmdbData?.title && !tmdbData?.name) {
+            // Добавляем обработчик
+            button.addEventListener('click', function() {
+                const contentData = getContentData();
+                if (!contentData?.title) {
                     Lampa.Noty.show("Не удалось получить данные о контенте", "error");
-                    console.error("[Lampa-ReYohoho] Данные не найдены:", tmdbData);
                     return;
                 }
 
-                const searchQuery = `${tmdbData.title || tmdbData.name} ${tmdbData.year}`;
+                const searchQuery = `${contentData.title} ${contentData.year}`;
                 Lampa.Noty.show(`Поиск: ${searchQuery}...`, "info");
-                
-                try {
-                    window.open(`${config.reyohohoUrl}${encodeURIComponent(searchQuery)}`, '_blank');
-                } catch (e) {
-                    console.error("[Lampa-ReYohoho] Ошибка открытия ReYohoho:", e);
-                    Lampa.Noty.show("Ошибка при открытии поиска", "error");
-                }
+                window.open(`${config.reyohohoUrl}${encodeURIComponent(searchQuery)}`, '_blank');
             });
 
+            // Добавляем кнопку в DOM
             document.body.appendChild(button);
+            console.log("[Lampa-ReYohoho] Кнопка создана");
         }
 
-        // Инициализация
+        // Инициализация с несколькими стратегиями
         function init() {
+            // Стратегия 1: Создать кнопку сразу
             createButton();
-            
-            // Обновляем кнопку при изменениях
-            const observer = new MutationObserver(() => {
+
+            // Стратегия 2: Отслеживать изменения через MutationObserver
+            const observer = new MutationObserver(function(mutations) {
                 if (!document.getElementById('reyohoho-bridge-btn')) {
                     createButton();
                 }
             });
-            
-            observer.observe(document.body, { childList: true, subtree: true });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+
+            // Стратегия 3: Периодическая проверка
+            const intervalId = setInterval(() => {
+                if (!document.getElementById('reyohoho-bridge-btn')) {
+                    createButton();
+                }
+            }, 3000);
+
+            // Очистка при разгрузке страницы
+            window.addEventListener('beforeunload', () => {
+                clearInterval(intervalId);
+                observer.disconnect();
+            });
         }
 
+        // Запускаем
         init();
     });
 })();
