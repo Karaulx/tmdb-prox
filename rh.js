@@ -66,4 +66,4 @@ function addReYohohoButton() {
                 <span>ReYohoho</span>
               `);
     }, 1000);
-                }
+}
