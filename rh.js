@@ -1,4 +1,4 @@
-// Universal Local Bridge для Lampa
+// Universal ReYohoho Bridge для Lampa (исправленная версия)
 (function() {
     // Конфигурация
     const config = {
@@ -11,23 +11,25 @@
         ]
     };
 
-    // Ожидание готовности Lampa
-    function waitForLampa(callback) {
+    // Ожидание готовности Lampa с таймаутом
+    function waitForLampa(callback, attempts = 0) {
         if (window.Lampa && window.Lampa.Storage && window.Lampa.Player) {
             callback();
+        } else if (attempts < 30) { // Максимум 30 попыток (3 секунды)
+            setTimeout(() => waitForLampa(callback, attempts + 1), 100);
         } else {
-            setTimeout(() => waitForLampa(callback), 100);
+            console.error("[LocalBridge] Lampa API не загрузилось");
         }
     }
 
     waitForLampa(function() {
         console.log("[LocalBridge] Инициализация");
 
-        // Получение данных контента
+        // Получение данных контента с улучшенной обработкой ошибок
         function getContentData() {
             try {
                 const item = Lampa.Storage.get('current_item') || {};
-                const backupTitle = document.querySelector('.card__title, .full-start__title')?.textContent.trim();
+                const backupTitle = document.querySelector('.card__title, .full-start__title')?.textContent?.trim() || '';
                 
                 return {
                     id: item.id,
@@ -42,12 +44,19 @@
             }
         }
 
-        // Создание универсальной кнопки
+        // Создание универсальной кнопки с проверками
         function createUniversalButton() {
             const buttonId = 'local-universal-btn';
             
             // Удаляем старую кнопку если есть
-            document.getElementById(buttonId)?.remove();
+            const oldButton = document.getElementById(buttonId);
+            if (oldButton) {
+                try {
+                    oldButton.remove();
+                } catch (e) {
+                    console.error("[LocalBridge] Ошибка удаления кнопки:", e);
+                }
+            }
 
             const button = document.createElement('div');
             button.id = buttonId;
@@ -111,48 +120,73 @@
                 </div>
             `;
 
-            // Обработчики событий
-            button.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') return;
-                
-                const menu = document.getElementById(`${buttonId}-menu`);
-                menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
-            });
-
-            // Обработчик выбора поисковика
-            document.getElementById(`${buttonId}-menu`).addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') {
-                    e.preventDefault();
-                    const content = getContentData();
-                    const searchUrl = e.target.dataset.url + encodeURIComponent(`${content.title} ${content.year}`);
-                    window.open(searchUrl, '_blank');
-                }
-            });
-
+            // Добавляем кнопку в DOM
             document.body.appendChild(button);
+
+            // Обработчики событий с проверками
+            try {
+                button.addEventListener('click', function(e) {
+                    if (e.target.tagName === 'A') return;
+                    
+                    const menu = document.getElementById(`${buttonId}-menu`);
+                    if (menu) {
+                        menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+                    }
+                });
+
+                const menu = document.getElementById(`${buttonId}-menu`);
+                if (menu) {
+                    menu.addEventListener('click', function(e) {
+                        if (e.target.tagName === 'A') {
+                            e.preventDefault();
+                            const content = getContentData();
+                            const searchUrl = e.target.dataset.url + encodeURIComponent(`${content.title} ${content.year}`);
+                            window.open(searchUrl, '_blank');
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("[LocalBridge] Ошибка добавления обработчиков:", e);
+            }
+
             console.log("[LocalBridge] Универсальная кнопка создана");
         }
 
-        // Инициализация с отслеживанием изменений
+        // Инициализация с улучшенным отслеживанием изменений
         function init() {
-            createUniversalButton();
-            
-            // Отслеживаем изменения контента
-            Lampa.Listener.follow('content', (e) => {
-                if (e.type === 'item') {
-                    setTimeout(createUniversalButton, 300);
+            try {
+                createUniversalButton();
+                
+                // Отслеживаем изменения контента
+                if (Lampa.Listener && typeof Lampa.Listener.follow === 'function') {
+                    Lampa.Listener.follow('content', (e) => {
+                        if (e.type === 'item') {
+                            setTimeout(createUniversalButton, 300);
+                        }
+                    });
                 }
-            });
-            
-            // Дополнительная проверка
-            setInterval(() => {
-                if (!document.getElementById('local-universal-btn')) {
-                    createUniversalButton();
-                }
-            }, 5000);
+                
+                // Дополнительная проверка
+                const checkInterval = setInterval(() => {
+                    if (!document.getElementById('local-universal-btn')) {
+                        createUniversalButton();
+                    }
+                }, 5000);
+
+                // Очистка интервала при обновлении страницы
+                window.addEventListener('beforeunload', () => {
+                    clearInterval(checkInterval);
+                });
+            } catch (e) {
+                console.error("[LocalBridge] Ошибка инициализации:", e);
+            }
         }
 
-        // Запуск
-        init();
+        // Запуск с обработкой ошибок
+        try {
+            init();
+        } catch (e) {
+            console.error("[LocalBridge] Критическая ошибка при запуске:", e);
+        }
     });
 })();
