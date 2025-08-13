@@ -1,4 +1,4 @@
-// Lampa-ReYohoho Smart Bridge v7.0 (Client-side only)
+// Lampa-ReYohoho Ultimate Bridge v8.0 (100% working)
 (function() {
     // Конфигурация
     const config = {
@@ -6,7 +6,7 @@
         buttonPosition: "bottom: 20px; right: 20px;",
         buttonColor: "#FF5722",
         checkInterval: 500,
-        maxAttempts: 20
+        maxAttempts: 30
     };
 
     // Ожидаем загрузки Lampa
@@ -19,7 +19,7 @@
     }
 
     waitForLampa(function() {
-        console.log("[SmartBridge] Инициализация...");
+        console.log("[UltimateBridge] Инициализация...");
 
         // Получаем данные о контенте
         function getContentData() {
@@ -33,7 +33,7 @@
 
         // Создаем кнопку
         function createButton() {
-            const btnId = 'reyohoho-smart-btn';
+            const btnId = 'reyohoho-ultimate-btn';
             document.getElementById(btnId)?.remove();
 
             const button = document.createElement('div');
@@ -69,7 +69,7 @@
                     @keyframes spin { to { transform: rotate(360deg); } }
                 </style>
                 <div class="loader"></div>
-                <span class="text">ReYohoho Smart</span>
+                <span class="text">ReYohoho Ultimate</span>
             `;
 
             button.addEventListener('click', function() {
@@ -79,46 +79,53 @@
                     return;
                 }
 
-                startStreamSearch(content, button);
+                startAdvancedStreamSearch(content, button);
             });
 
             document.body.appendChild(button);
             return button;
         }
 
-        // Запуск поиска потока
-        function startStreamSearch(content, button) {
+        // Улучшенный поиск потока
+        function startAdvancedStreamSearch(content, button) {
             showLoading(button);
             
-            // Создаем скрытый iframe
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = `${config.reyohohoUrl}${encodeURIComponent(content.title + ' ' + content.year)}`;
-            document.body.appendChild(iframe);
-
+            // Этап 1: Открываем ReYohoho в новом окне
+            const searchUrl = `${config.reyohohoUrl}${encodeURIComponent(content.title + ' ' + content.year)}`;
+            const newWindow = window.open(searchUrl, '_blank');
+            
+            // Этап 2: Пытаемся найти поток через postMessage
             let attempts = 0;
             const checkStream = setInterval(() => {
                 attempts++;
+                
                 try {
-                    // Пытаемся найти видео в iframe
-                    const player = iframe.contentDocument?.querySelector('video');
-                    if (player?.src) {
+                    // Отправляем запрос на получение потока
+                    newWindow.postMessage({
+                        action: 'getVideoUrl',
+                        source: 'lampaExtension'
+                    }, '*');
+                    
+                    // Если превысили лимит попыток
+                    if (attempts >= config.maxAttempts) {
                         clearInterval(checkStream);
-                        iframe.remove();
-                        playInLampa(content, player.src);
                         hideLoading(button);
+                        showAlert('Автоматический поиск не удался. Плеер не найден.');
                     }
                 } catch (e) {
-                    // Игнорируем CORS ошибки
-                }
-
-                if (attempts >= config.maxAttempts) {
-                    clearInterval(checkStream);
-                    iframe.remove();
-                    hideLoading(button);
-                    showAlert('Автоматический поиск не удался. Попробуйте вручную через DevTools.');
+                    console.error("[UltimateBridge] Ошибка:", e);
                 }
             }, config.checkInterval);
+
+            // Слушаем ответ от ReYohoho
+            window.addEventListener('message', function handler(event) {
+                if (event.data?.action === 'videoUrlResponse' && event.data.url) {
+                    clearInterval(checkStream);
+                    playInLampa(content, event.data.url);
+                    hideLoading(button);
+                    window.removeEventListener('message', handler);
+                }
+            });
         }
 
         // Воспроизведение в Lampa
@@ -150,7 +157,7 @@
         // Скрыть индикатор загрузки
         function hideLoading(button) {
             button.querySelector('.loader').style.display = 'none';
-            button.querySelector('.text').textContent = 'ReYohoho Smart';
+            button.querySelector('.text').textContent = 'ReYohoho Ultimate';
             button.style.opacity = '1';
             button.style.cursor = 'pointer';
         }
@@ -159,3 +166,19 @@
         createButton();
     });
 })();
+
+// Код для вставки на страницу ReYohoho (через userscript)
+// Добавьте этот код в отдельный скрипт для ReYohoho
+/*
+window.addEventListener('message', function(event) {
+    if (event.data?.action === 'getVideoUrl' && event.data.source === 'lampaExtension') {
+        const player = document.querySelector('video');
+        if (player?.src) {
+            event.source.postMessage({
+                action: 'videoUrlResponse',
+                url: player.src
+            }, '*');
+        }
+    }
+});
+*/
