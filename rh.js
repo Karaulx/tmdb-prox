@@ -1,15 +1,19 @@
 function addReYohohoButton() {
-    // 1. Находим контейнер с элементами трейлеров
-    const trailersContainer = $('.scroll__content');
+    // 1. Удаляем все возможные дубликаты
+    $('.re-yohoho-button').remove();
+
+    // 2. Точный целевой контейнер
+    const targetContainer = $('.selectbox__body .scroll__content');
     
-    if (!trailersContainer.length) {
-        console.error('Контейнер трейлеров не найден!');
+    if (!targetContainer.length) {
+        console.error('Целевой контейнер не найден');
         return;
     }
 
-    // 2. Создаем кнопку ReYohoho в едином стиле
-    const reYohohoButton = $(`
+    // 3. Создаем кнопку с уникальным идентификатором
+    const button = $(`
         <div class="selectbox-item selectbox-item--icon selector re-yohoho-button" 
+             data-reyohoho="true"
              style="border-left: 3px solid #00ff00; margin-bottom: 15px;">
             <div class="selectbox-item__icon">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="#00ff00">
@@ -23,29 +27,47 @@ function addReYohohoButton() {
         </div>
     `);
 
-    // 3. Добавляем обработчик клика
-    reYohohoButton.on('hover:enter', function() {
-        console.log('ReYohoho запущен');
-        // Ваш код для запуска ReYohoho
-        // Например: Lampa.Player.play(reYohohoUrl);
+    // 4. Обработчик клика
+    button.on('hover:enter', function() {
+        console.log('ReYohoho activated');
+        // Ваш функционал здесь
     });
 
-    // 4. Вставляем кнопку ПЕРВОЙ в списке
-    trailersContainer.prepend(reYohohoButton);
-    console.log('✅ Кнопка ReYohoho добавлена в начало списка');
-
-    // 5. Временно подсвечиваем контейнер для проверки (удалите в финальной версии)
-    trailersContainer.css('outline', '2px dashed rgba(0,255,0,0.5)');
+    // 5. Точно позиционируем кнопку
+    const firstTrailer = targetContainer.find('.selectbox-item').first();
+    if (firstTrailer.length) {
+        firstTrailer.before(button);
+        console.log('✅ Кнопка добавлена перед первым трейлером');
+    } else {
+        targetContainer.prepend(button);
+        console.log('⚠️ Кнопка добавлена в начало контейнера');
+    }
 }
 
-// Автоматическая инициализация
-if (window.appready) {
-    addReYohohoButton();
-} else {
-    Lampa.Listener.follow('app', function(e) {
-        if (e.type === 'ready') {
-            // Задержка для полной загрузки интерфейса
-            setTimeout(addReYohohoButton, 800);
+// Умная инициализация с проверкой
+function initReYohoho() {
+    // Ожидаем полной загрузки интерфейса
+    const checkInterval = setInterval(() => {
+        if ($('.selectbox__body').length) {
+            clearInterval(checkInterval);
+            addReYohohoButton();
+            
+            // Дополнительная проверка через 1 сек
+            setTimeout(() => {
+                if ($('.re-yohoho-button').length !== 1) {
+                    console.warn('Обнаружены дубликаты, очищаем...');
+                    $('.re-yohoho-button').not(':first').remove();
+                }
+            }, 1000);
         }
+    }, 300);
+}
+
+// Запуск
+if (window.appready) {
+    initReYohoho();
+} else {
+    Lampa.Listener.follow('app', (e) => {
+        if (e.type === 'ready') initReYohoho();
     });
 }
