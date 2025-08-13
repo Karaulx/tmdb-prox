@@ -1,12 +1,12 @@
-// Lampa-ReYohoho Direct Stream Bridge v4.0
+// Lampa-ReYohoho Direct Link v5.0 (без API)
 (function() {
     // Конфигурация
     const config = {
-        reyohohoApi: "https://api4.rhhhhhhh.live",
+        reyohohoUrl: "https://reyohoho.github.io/reyohoho/?search=",
         buttonPosition: "bottom: 20px; right: 20px;",
         buttonColor: "#FF5722",
         debugMode: true,
-        timeout: 15000
+        timeout: 8000
     };
 
     // Ожидание инициализации Lampa
@@ -24,17 +24,15 @@
         // Получение данных о контенте
         function getContentData() {
             return {
-                id: window.location.href.match(/card=(\d+)/)?.[1] || '',
-                type: document.querySelector('.card__type')?.textContent === 'TV' ? 'tv' : 'movie',
                 title: document.querySelector('.full-start-new__title')?.textContent.trim() || '',
-                year: parseInt(document.querySelector('.full-start-new__head span')?.textContent) || new Date().getFullYear(),
+                year: parseInt(document.querySelector('.full-start-new__head span')?.textContent) || '',
                 poster: document.querySelector('.full-start-new__img.full--poster')?.src || ''
             };
         }
 
         // Создание кнопки
         function createButton() {
-            const buttonId = 'reyohoho-direct-btn';
+            const buttonId = 'reyohoho-directlink-btn';
             document.getElementById(buttonId)?.remove();
 
             const button = document.createElement('div');
@@ -63,54 +61,67 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
                     <path d="M8 5v14l11-7z"/>
                 </svg>
-                ReYohoho Stream
+                ReYohoho Direct
             `;
 
-            button.addEventListener('click', async function() {
+            button.addEventListener('click', function() {
                 const content = getContentData();
                 if (!content.title) {
                     alert("Не удалось получить данные о контенте");
                     return;
                 }
 
-                // 1. Поиск контента через API ReYohoho
-                const searchUrl = `${config.reyohohoApi}/search?query=${encodeURIComponent(content.title + ' ' + content.year)}`;
-                
-                try {
-                    const response = await fetch(searchUrl);
-                    const data = await response.json();
-                    
-                    if (!data.results || data.results.length === 0) {
-                        throw new Error("Контент не найден");
+                // Создаем iframe для работы с ReYohoho
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = `${config.reyohohoUrl}${encodeURIComponent(content.title + ' ' + content.year)}`;
+                document.body.appendChild(iframe);
+
+                // Пытаемся найти плеер в iframe
+                const timer = setTimeout(() => {
+                    iframe.remove();
+                    manualFallback(content);
+                }, config.timeout);
+
+                iframe.onload = function() {
+                    try {
+                        const player = iframe.contentWindow.document.querySelector('video');
+                        if (player && player.src) {
+                            clearTimeout(timer);
+                            playInLampa(content, player.src);
+                            iframe.remove();
+                        }
+                    } catch (e) {
+                        console.log("CORS ограничение, используем fallback метод");
+                        manualFallback(content);
                     }
-
-                    // 2. Получение ID первого результата
-                    const contentId = data.results[0].id;
-                    
-                    // 3. Запрос информации о потоке
-                    const streamInfoUrl = `${config.reyohohoApi}/stream?id=${contentId}&type=${content.type}`;
-                    const streamResponse = await fetch(streamInfoUrl);
-                    const streamData = await streamResponse.json();
-                    
-                    if (!streamData.url) {
-                        throw new Error("Поток не найден");
-                    }
-
-                    // 4. Воспроизведение в Lampa
-                    Lampa.Player.play({
-                        title: `${content.title} (${content.year})`,
-                        files: [{url: streamData.url, quality: "Auto"}],
-                        poster: content.poster
-                    });
-
-                } catch (e) {
-                    console.error("[ReYohohoBridge] Ошибка:", e);
-                    alert(`Ошибка: ${e.message}\n\nОткрываю ReYohoho для ручного выбора...`);
-                    window.open(`https://reyohoho.github.io/reyohoho/?search=${encodeURIComponent(content.title + ' ' + content.year)}`, '_blank');
-                }
+                };
             });
 
             document.body.appendChild(button);
+        }
+
+        // Воспроизведение в Lampa
+        function playInLampa(content, url) {
+            Lampa.Player.play({
+                title: `${content.title} (${content.year})`,
+                files: [{url: url, quality: "Auto"}],
+                poster: content.poster
+            });
+        }
+
+        // Ручной ввод ссылки
+        function manualFallback(content) {
+            const videoUrl = prompt(
+                `Автоматический поиск не удался.\n\n1. Откройте ReYohoho в новой вкладке\n2. Найдите и запустите "${content.title}"\n3. Скопируйте ссылку на видео (из inspect element)\n4. Вставьте сюда:`,
+                "https://"
+            );
+            
+            if (videoUrl && videoUrl.startsWith('http')) {
+                playInLampa(content, videoUrl);
+            } else {
+                window.open(`${config.reyohohoUrl}${encodeURIComponent(content.title + ' ' + content.year)}`, '_blank');
+            }
         }
 
         // Инициализация
@@ -118,7 +129,7 @@
         
         // Обновление кнопки при изменениях DOM
         new MutationObserver(() => {
-            if (!document.getElementById('reyohoho-direct-btn')) {
+            if (!document.getElementById('reyohoho-directlink-btn')) {
                 createButton();
             }
         }).observe(document.body, {childList: true, subtree: true});
