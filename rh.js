@@ -1,156 +1,186 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
-const cors = require('cors');
-const fs = require('fs');
+// ==UserScript==
+// @name         Lampa-ReYohoho Ultimate Bridge v8.1
+// @namespace    http://tampermonkey.net/
+// @version      8.1
+// @description  Прямая интеграция ReYohoho с Lampa
+// @author       YourName
+// @match        http*://*lampa*
+// @icon         https://reyohoho.github.io/favicon.ico
+// @grant        GM_xmlhttpRequest
+// @connect      your-server.com
+// ==/UserScript==
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+(function() {
+    // Конфигурация
+    const config = {
+        apiEndpoint: "https://your-server.com/lampa_bridge.php",
+        apiKey: "SECRET_KEY_12345",
+        buttonPosition: "bottom: 20px; right: 20px;",
+        buttonColor: "#FF5722",
+        timeout: 15000,
+        retryCount: 3
+    };
 
-const PORT = 3001;
-const DEBUG_DIR = '/tmp/reyohoho-debug';
-
-// Убедимся, что директория для отладки существует
-if (!fs.existsSync(DEBUG_DIR)) {
-    fs.mkdirSync(DEBUG_DIR, { recursive: true });
-}
-
-async function saveDebugData(page, stepName) {
-    try {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const screenshotPath = `${DEBUG_DIR}/${stepName}-${timestamp}.png`;
-        const htmlPath = `${DEBUG_DIR}/${stepName}-${timestamp}.html`;
-        
-        await page.screenshot({ path: screenshotPath, fullPage: true });
-        const html = await page.content();
-        fs.writeFileSync(htmlPath, html);
-        
-        console.log(`[DEBUG] Saved ${stepName}`);
-        return true;
-    } catch (e) {
-        console.error(`[DEBUG ERROR] Failed to save ${stepName}:`, e);
-        return false;
-    }
-}
-
-app.post('/api/get-stream', async (req, res) => {
-    let browser;
-    try {
-        const { title, year } = req.body;
-        console.log(`Starting search for: ${title} (${year})`);
-        
-        // Инициализация браузера с расширенными параметрами
-        browser = await puppeteer.launch({
-            headless: false, // Включим headful для отладки
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--window-size=1280,720'
-            ],
-            executablePath: '/usr/bin/chromium',
-            dumpio: true // Подробное логирование
-        });
-
-        const page = await browser.newPage();
-        
-        // Включим полное логирование
-        page.on('console', msg => console.log('PAGE LOG:', msg.text()));
-        page.on('requestfailed', req => console.log('REQUEST FAILED:', req.url(), req.failure()));
-        
-        // 1. Переходим на главную страницу
-        console.log('Navigating to homepage...');
-        await page.goto('https://reyohoho.github.io/reyohoho/', {
-            waitUntil: 'networkidle2',
-            timeout: 60000
-        });
-        await saveDebugData(page, '01-homepage');
-        
-        // 2. Проверяем наличие элементов поиска
-        console.log('Checking search elements...');
-        const searchExists = await page.evaluate(() => {
-            const input = document.querySelector('.search-input');
-            const button = document.querySelector('.search-button');
-            return {
-                inputExists: !!input,
-                buttonExists: !!button,
-                pageTitle: document.title,
-                bodyText: document.body.innerText.substring(0, 200) + '...'
-            };
-        });
-        
-        console.log('Search elements check:', searchExists);
-        if (!searchExists.inputExists || !searchExists.buttonExists) {
-            throw new Error('Search elements not found on page');
+    // Ожидаем загрузки Lampa
+    const init = () => {
+        if (window.Lampa && document.querySelector('.full-start-new__title')) {
+            setupPlugin();
+        } else {
+            setTimeout(init, 500);
         }
-        
-        // 3. Выполняем поиск
-        console.log('Performing search...');
-        await page.type('.search-input', `${title} ${year}`, { delay: 100 });
-        await saveDebugData(page, '02-after-typing');
-        
-        await page.click('.search-button');
-        await saveDebugData(page, '03-after-search-click');
-        
-        // 4. Ждем результаты - несколько стратегий
-        console.log('Waiting for results...');
+    };
+
+    // Основная инициализация
+    const setupPlugin = () => {
+        console.log("[ReYohoho Bridge] Инициализация...");
+
+        const button = createButton();
+        let currentRequest = null;
+
+        button.addEventListener('click', async () => {
+            if (button.classList.contains('loading')) return;
+
+            const content = getContentData();
+            if (!content.title) {
+                showAlert('Не удалось определить фильм');
+                return;
+            }
+
+            try {
+                await startStreamSearch(content, button);
+            } catch (e) {
+                console.error("[Bridge] Error:", e);
+                showAlert('Ошибка при поиске: ' + e.message);
+            }
+        });
+    };
+
+    // Получение данных о контенте
+    const getContentData = () => ({
+        title: document.querySelector('.full-start-new__title')?.textContent.trim() || '',
+        year: document.querySelector('.full-start-new__head span')?.textContent.match(/\d{4}/)?.[0] || '',
+        poster: document.querySelector('.full-start-new__img.full--poster')?.src || '',
+        translation: document.querySelector('.selector__item.active')?.textContent.trim() || ''
+    });
+
+    // Создание кнопки
+    const createButton = () => {
+        const existingBtn = document.getElementById('reyohoho-ultimate-btn');
+        if (existingBtn) return existingBtn;
+
+        const button = document.createElement('div');
+        button.id = 'reyohoho-ultimate-btn';
+        button.className = 'reyohoho-button';
+        button.innerHTML = `
+            <div class="loader"></div>
+            <span class="text">ReYohoho</span>
+        `;
+
+        const style = document.createElement('style');
+        style.textContent = `
+            .reyohoho-button {
+                position: fixed;
+                ${config.buttonPosition}
+                padding: 12px 16px;
+                background: ${config.buttonColor};
+                color: white;
+                font-family: Arial;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 8px;
+                z-index: 99999;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                transition: opacity 0.3s;
+            }
+            .reyohoho-button.loading {
+                opacity: 0.7;
+                cursor: wait;
+            }
+            .reyohoho-button .loader {
+                display: none;
+                width: 16px;
+                height: 16px;
+                border: 2px solid rgba(255,255,255,0.3);
+                border-radius: 50%;
+                border-top-color: white;
+                animation: spin 1s linear infinite;
+            }
+            @keyframes spin { to { transform: rotate(360deg); } }
+        `;
+
+        document.head.appendChild(style);
+        document.body.appendChild(button);
+        return button;
+    };
+
+    // Поиск потока
+    const startStreamSearch = async (content, button) => {
+        button.classList.add('loading');
+        button.querySelector('.loader').style.display = 'block';
+        button.querySelector('.text').textContent = 'Поиск...';
+
         try {
-            // Стратегия 1: Ждем появления карточек
-            await page.waitForSelector('.movie-card', { timeout: 30000 });
-            console.log('Found movie cards');
-        } catch (e) {
-            console.log('Movie cards not found, trying alternative detection...');
-            
-            // Стратегия 2: Проверяем любой контент после поиска
-            const anyContent = await page.evaluate(() => {
-                return document.body.innerText.length > 100;
-            });
-            
-            if (!anyContent) {
-                throw new Error('No content loaded after search');
+            const streamData = await fetchStreamUrl(content);
+            if (streamData.url) {
+                playInLampa(content, streamData.url);
+            } else {
+                showAlert('Поток не найден');
             }
-            
-            await saveDebugData(page, '04-after-search-no-cards');
-            console.log('Content found but no cards detected');
+        } finally {
+            button.classList.remove('loading');
+            button.querySelector('.loader').style.display = 'none';
+            button.querySelector('.text').textContent = 'ReYohoho';
         }
-        
-        // 5. Проверяем, что вообще есть на странице
-        const pageContent = await page.evaluate(() => {
-            return {
-                title: document.title,
-                html: document.documentElement.outerHTML.substring(0, 500) + '...',
-                text: document.body.innerText.substring(0, 500) + '...'
-            };
-        });
-        
-        console.log('Current page content:', pageContent);
-        await saveDebugData(page, '05-final-state');
-        
-        res.json({
-            success: false,
-            debug: {
-                screenshots: DEBUG_DIR,
-                pageContent: pageContent,
-                message: 'Debug data saved, check server logs'
-            }
-        });
-        
-    } catch (error) {
-        console.error('Fatal error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            debug: {
-                dir: DEBUG_DIR,
-                instruction: 'Check debug files and server logs'
-            }
-        });
-    } finally {
-        if (browser) await browser.close();
-    }
-});
+    };
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Debug files will be saved to: ${DEBUG_DIR}`);
-});
+    // Запрос к API
+    const fetchStreamUrl = (content) => {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `${config.apiEndpoint}?key=${config.apiKey}&title=${encodeURIComponent(content.title)}&year=${content.year}`,
+                timeout: config.timeout,
+                onload: (response) => {
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        if (data.status === "success") {
+                            resolve(data.data);
+                        } else {
+                            reject(new Error(data.message || "Invalid response"));
+                        }
+                    } catch (e) {
+                        reject(new Error("Parse error"));
+                    }
+                },
+                onerror: () => reject(new Error("Network error")),
+                ontimeout: () => reject(new Error("Timeout"))
+            });
+        });
+    };
+
+    // Воспроизведение в Lampa
+    const playInLampa = (content, url) => {
+        Lampa.Player.play({
+            title: `${content.title} (${content.year})`,
+            files: [{url: url, quality: "Auto"}],
+            poster: content.poster,
+            translation: content.translation
+        });
+    };
+
+    // Показать уведомление
+    const showAlert = (message) => {
+        if (window.Lampa?.Noty) {
+            Lampa.Noty.show(message, 'error');
+        } else {
+            alert(message);
+        }
+    };
+
+    // Запуск
+    init();
+})();
